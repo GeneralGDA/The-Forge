@@ -64,6 +64,7 @@ struct PlanetInfoStruct
 struct UniformBlock
 {
 	mat4 mProjectView;
+	mat4 mCamera;
 	mat4 mToWorldMat[MAX_PLANETS];
 	vec4 mColor[MAX_PLANETS];
 
@@ -161,8 +162,137 @@ private:
 	Shader* floorShader = nullptr;
 	Buffer* floorVertices = nullptr;
 	Pipeline* floorPipeline = nullptr;
+	RasterizerState* floorRasterizerState = nullptr;
+
+	static const int maxParticlesCount = 1;
+	static const int particleVertexCount = 6;
+	Shader* particlesShader = nullptr;
+	Buffer* particleVertices = nullptr;
+	Pipeline* particlesPipeline = nullptr;
+	DepthState* particlesDepthState = nullptr;
+	BlendState* particlesBlendState = nullptr;
+	RasterizerState* particlesRasterizerState = nullptr;
+	Texture* particlesTexture = nullptr;
+	Sampler* particleImageSampler = nullptr;
+
+	void prepareFloorResources()
+	{
+		ShaderLoadDesc floorShaderSource = {};
+		floorShaderSource.mStages[0] = { "floor.vert", nullptr, 0, FSR_SrcShaders };
+		floorShaderSource.mStages[1] = { "floor.frag", nullptr, 0, FSR_SrcShaders };
+		addShader(pRenderer, &floorShaderSource, &floorShader);
+
+		const auto floorHalfSize = 300.0f;
+
+		const auto FLOATS_PER_FLOOR_VERTEX = 3;
+
+		const float floorMeshPositions[] =
+		{
+			-floorHalfSize, 0.0f, +floorHalfSize,
+			+floorHalfSize, 0.0f, +floorHalfSize,
+			+floorHalfSize, 0.0f, -floorHalfSize,
+
+			-floorHalfSize, 0.0f, -floorHalfSize,
+			-floorHalfSize, 0.0f, +floorHalfSize,
+			+floorHalfSize, 0.0f, -floorHalfSize,
+		};
+
+		ASSERT(0 == (sizeof(floorMeshPositions) / sizeof(float)) % FLOATS_PER_FLOOR_VERTEX);
+		ASSERT(floorVertexCount * sizeof(float) * FLOATS_PER_FLOOR_VERTEX == sizeof(floorMeshPositions));
+
+		BufferLoadDesc floorVertexBufferDescription = {};
+		floorVertexBufferDescription.mDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
+		floorVertexBufferDescription.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_GPU_ONLY;
+		floorVertexBufferDescription.mDesc.mSize = sizeof(floorMeshPositions);
+		floorVertexBufferDescription.mDesc.mVertexStride = sizeof(float) * FLOATS_PER_FLOOR_VERTEX;
+		floorVertexBufferDescription.pData = floorMeshPositions;
+		floorVertexBufferDescription.ppBuffer = &floorVertices;
+		addResource(&floorVertexBufferDescription);
+
+		RasterizerStateDesc rasterizerStateDescription = {};
+		rasterizerStateDescription.mCullMode = CULL_MODE_FRONT;
+		addRasterizerState(pRenderer, &rasterizerStateDescription, &floorRasterizerState);
+	}
+
+	void prepareParticlesResources()
+	{
+		ShaderLoadDesc particlesShaderSource = {};
+		particlesShaderSource.mStages[0] = { "particle.vert", nullptr, 0, FSR_SrcShaders };
+		particlesShaderSource.mStages[1] = { "particle.frag", nullptr, 0, FSR_SrcShaders };
+		addShader(pRenderer, &particlesShaderSource, &particlesShader);
+
+		const auto FLOATS_PER_PARTICLE_VERTEX = 2;
+		const auto VERTICES_PER_PARTICLE = 6;
+
+		const float PARTICLE_BASE_HALF_SIZE = 10.0f;
+
+		const float positions[] =
+		{
+			-PARTICLE_BASE_HALF_SIZE, +PARTICLE_BASE_HALF_SIZE,
+			+PARTICLE_BASE_HALF_SIZE, +PARTICLE_BASE_HALF_SIZE,
+			+PARTICLE_BASE_HALF_SIZE, -PARTICLE_BASE_HALF_SIZE,
+
+			-PARTICLE_BASE_HALF_SIZE, -PARTICLE_BASE_HALF_SIZE,
+			-PARTICLE_BASE_HALF_SIZE, +PARTICLE_BASE_HALF_SIZE,
+			+PARTICLE_BASE_HALF_SIZE, -PARTICLE_BASE_HALF_SIZE,
+		};
+
+		ASSERT(0 == (sizeof(positions) / sizeof(float)) % FLOATS_PER_PARTICLE_VERTEX);
+
+		BufferLoadDesc particlesVertexBufferDescription = {};
+		particlesVertexBufferDescription.mDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
+		particlesVertexBufferDescription.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_GPU_ONLY;
+		particlesVertexBufferDescription.mDesc.mSize = sizeof(positions);
+		particlesVertexBufferDescription.mDesc.mVertexStride = sizeof(float) * FLOATS_PER_PARTICLE_VERTEX;
+		particlesVertexBufferDescription.pData = positions;
+		particlesVertexBufferDescription.ppBuffer = &particleVertices;
+		addResource(&particlesVertexBufferDescription);
+
+		DepthStateDesc depthStateDescription = {};
+		depthStateDescription.mDepthTest = true;
+		depthStateDescription.mDepthWrite = false;
+		depthStateDescription.mDepthFunc = CMP_LEQUAL;
+		addDepthState(pRenderer, &depthStateDescription, &particlesDepthState);
+
+		BlendStateDesc blendStateDescription = {};
+		blendStateDescription.mIndependentBlend = false;
+		blendStateDescription.mAlphaToCoverage = false;
+		blendStateDescription.mRenderTargetMask = BLEND_STATE_TARGET_0;
+		blendStateDescription.mMasks[0] = ALL;
+		blendStateDescription.mBlendAlphaModes[0] = BM_ADD;
+		blendStateDescription.mBlendModes[0] = BM_ADD;
+		blendStateDescription.mDstAlphaFactors[0] = BC_ZERO;
+		blendStateDescription.mDstFactors[0] = BC_ONE_MINUS_SRC_ALPHA;
+		blendStateDescription.mSrcAlphaFactors[0] = BC_ONE;
+		blendStateDescription.mSrcFactors[0] = BC_SRC_ALPHA;
+		addBlendState(pRenderer, &blendStateDescription, &particlesBlendState);
+
+		TextureLoadDesc textureDescription = {};
+		textureDescription.mRoot = FSR_Textures;
+		textureDescription.mUseMipmaps = true;
+		textureDescription.pFilename = "blackSmoke00.png";
+		textureDescription.ppTexture = &particlesTexture;
+		addResource(&textureDescription, true);
+
+		RasterizerStateDesc rasterizerStateDescription = {};
+		rasterizerStateDescription.mCullMode = CULL_MODE_NONE;
+		addRasterizerState(pRenderer, &rasterizerStateDescription, &particlesRasterizerState);
+
+		SamplerDesc samplerDescription = {};
+		samplerDescription.mMinFilter = FILTER_LINEAR;
+		samplerDescription.mMagFilter = FILTER_LINEAR;
+		samplerDescription.mMipMapMode = MIPMAP_MODE_LINEAR;
+		samplerDescription.mAddressU = ADDRESS_MODE_CLAMP_TO_EDGE;
+		samplerDescription.mAddressV = ADDRESS_MODE_CLAMP_TO_EDGE;
+		samplerDescription.mAddressW = ADDRESS_MODE_CLAMP_TO_EDGE;
+		samplerDescription.mMipLosBias = 0;
+		samplerDescription.mMaxAnisotropy = 16;
+		samplerDescription.mCompareFunc = CMP_ALWAYS;
+		addSampler(pRenderer, &samplerDescription, &particleImageSampler);
+	}
 
 public:
+
 	bool Init()
 	{
 		// window and renderer setup
@@ -207,6 +337,12 @@ public:
 		}
 #endif
 
+		//==
+		{
+			prepareFloorResources();
+			prepareParticlesResources();
+		}
+
 		ShaderLoadDesc skyShader = {};
 		skyShader.mStages[0] = { "skybox.vert", NULL, 0, FSR_SrcShaders };
 		skyShader.mStages[1] = { "skybox.frag", NULL, 0, FSR_SrcShaders };
@@ -223,13 +359,14 @@ public:
 		};
 		addSampler(pRenderer, &samplerDesc, &pSamplerSkyBox);
 
-		Shader* shaders[] = { pSphereShader, pSkyBoxDrawShader };
-		const char* pStaticSamplers[] = { "uSampler0" };
+		Shader* shaders[] = { pSphereShader, pSkyBoxDrawShader, particlesShader };
+		const char* pStaticSamplersNames[] = { "uSampler0", "particleImageSampler" };
+		Sampler* staticSamplers[] = { pSamplerSkyBox , particleImageSampler };
 		RootSignatureDesc rootDesc = {};
-		rootDesc.mStaticSamplerCount = 1;
-		rootDesc.ppStaticSamplerNames = pStaticSamplers;
-		rootDesc.ppStaticSamplers = &pSamplerSkyBox;
-		rootDesc.mShaderCount = 2;
+		rootDesc.mStaticSamplerCount = _countof(pStaticSamplersNames);
+		rootDesc.ppStaticSamplerNames = pStaticSamplersNames;
+		rootDesc.ppStaticSamplers = staticSamplers;
+		rootDesc.mShaderCount = _countof(shaders);
 		rootDesc.ppShaders = shaders;
 		addRootSignature(pRenderer, &rootDesc, &pRootSignature);
 
@@ -331,41 +468,6 @@ public:
 			addResource(&ubDesc);
 			ubDesc.ppBuffer = &pSkyboxUniformBuffer[i];
 			addResource(&ubDesc);
-		}
-
-		//==
-		{
-			ShaderLoadDesc floorShaderSource = {};
-			floorShaderSource.mStages[0] = { "floor.vert", nullptr, 0, FSR_SrcShaders };
-			floorShaderSource.mStages[1] = { "floor.frag", nullptr, 0, FSR_SrcShaders };
-			addShader(pRenderer, &floorShaderSource, &floorShader);
-
-			const auto floorHalfSize = 300.0f;
-
-			const auto FLOATS_PER_FLOOR_VERTEX = 3;
-
-			float floorMeshPositions[] =
-			{
-				-floorHalfSize, 0.0f, +floorHalfSize,
-				+floorHalfSize, 0.0f, +floorHalfSize,
-				+floorHalfSize, 0.0f, -floorHalfSize,
-
-				-floorHalfSize, 0.0f, -floorHalfSize,
-				-floorHalfSize, 0.0f, +floorHalfSize,
-				+floorHalfSize, 0.0f, -floorHalfSize,
-			};
-
-			ASSERT( 0 == (sizeof(floorMeshPositions) / sizeof(float)) % FLOATS_PER_FLOOR_VERTEX );
-			ASSERT(floorVertexCount * sizeof(float) * FLOATS_PER_FLOOR_VERTEX == sizeof(floorMeshPositions));
-
-			BufferLoadDesc floorVertexBufferDescription = {};
-			floorVertexBufferDescription.mDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
-			floorVertexBufferDescription.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_GPU_ONLY;
-			floorVertexBufferDescription.mDesc.mSize = sizeof(floorMeshPositions);
-			floorVertexBufferDescription.mDesc.mVertexStride = sizeof(float) * FLOATS_PER_FLOOR_VERTEX;
-			floorVertexBufferDescription.pData = floorMeshPositions;
-			floorVertexBufferDescription.ppBuffer = &floorVertices;
-			addResource(&floorVertexBufferDescription);
 		}
 
 		finishResourceLoading();
@@ -518,6 +620,17 @@ public:
 		{
 			removeShader(pRenderer, floorShader);
 			removeResource(floorVertices);
+			removeRasterizerState(floorRasterizerState);
+
+			removeShader(pRenderer, particlesShader);
+			removeResource(particleVertices);
+			removeRasterizerState(particlesRasterizerState);
+
+			removeDepthState(particlesDepthState);
+			removeBlendState(particlesBlendState);
+
+			removeSampler(pRenderer, particleImageSampler);
+			removeResource(particlesTexture);
 		}
 
 		removeSampler(pRenderer, pSamplerSkyBox);
@@ -598,7 +711,22 @@ public:
 		vertexLayout.mAttribs[0].mLocation = 0;
 		vertexLayout.mAttribs[0].mOffset = 0;
 		pipelineSettings.pShaderProgram = floorShader;
+		pipelineSettings.pRasterizerState = floorRasterizerState;
 		addPipeline(pRenderer, &pipelineSettings, &floorPipeline);
+
+		// particle pipeline
+		vertexLayout = {};
+		vertexLayout.mAttribCount = 1;
+		vertexLayout.mAttribs[0].mSemantic = SEMANTIC_POSITION;
+		vertexLayout.mAttribs[0].mFormat = ImageFormat::RG32F;
+		vertexLayout.mAttribs[0].mBinding = 0;
+		vertexLayout.mAttribs[0].mLocation = 0;
+		vertexLayout.mAttribs[0].mOffset = 0;
+		pipelineSettings.pShaderProgram = particlesShader;
+		pipelineSettings.pBlendState = particlesBlendState;
+		pipelineSettings.pDepthState = particlesDepthState;
+		pipelineSettings.pRasterizerState = particlesRasterizerState;
+		addPipeline(pRenderer, &pipelineSettings, &particlesPipeline);
 
 		//layout and pipeline for skybox draw
 		vertexLayout = {};
@@ -608,7 +736,7 @@ public:
 		vertexLayout.mAttribs[0].mBinding = 0;
 		vertexLayout.mAttribs[0].mLocation = 0;
 		vertexLayout.mAttribs[0].mOffset = 0;
-
+		pipelineSettings.pBlendState = nullptr;
 		pipelineSettings.pDepthState = NULL;
 		pipelineSettings.pRasterizerState = pSkyboxRast;
 		pipelineSettings.pShaderProgram = pSkyBoxDrawShader;
@@ -629,7 +757,9 @@ public:
 
 		removePipeline(pRenderer, pSkyBoxDrawPipeline);
 		removePipeline(pRenderer, pSpherePipeline);
+		
 		removePipeline(pRenderer, floorPipeline);
+		removePipeline(pRenderer, particlesPipeline);
 
 		removeSwapChain(pRenderer, pSwapChain);
 		removeRenderTarget(pRenderer, pDepthBuffer);
@@ -659,6 +789,7 @@ public:
 		const float horizontal_fov = PI / 2.0f;
 		mat4 projMat = mat4::perspective(horizontal_fov, aspectInverse, 0.1f, 1000.0f);
 		gUniformData.mProjectView = projMat * viewMat;
+		gUniformData.mCamera = viewMat;
 
 		// point light parameters
 		gUniformData.mLightPosition = vec3(0, 0, 0);
@@ -689,6 +820,7 @@ public:
 		viewMat.setTranslation(vec3(0));
 		gUniformDataSky = gUniformData;
 		gUniformDataSky.mProjectView = projMat * viewMat;
+		gUniformDataSky.mCamera = viewMat;
 		/************************************************************************/
 		/************************************************************************/
 	}
@@ -742,7 +874,7 @@ public:
 		cmdBeginDebugMarker(cmd, 0, 0, 1, "Draw skybox");
 		cmdBindPipeline(cmd, pSkyBoxDrawPipeline);
 
-		DescriptorData params[7] = {};
+		DescriptorData params[8] = {};
 		params[0].pName = "uniformBlock";
 		params[0].ppBuffers = &pSkyboxUniformBuffer[gFrameIndex];
 		params[1].pName = "RightText";
@@ -757,24 +889,13 @@ public:
 		params[5].ppTextures = &pSkyBoxTextures[4];
 		params[6].pName = "BackText";
 		params[6].ppTextures = &pSkyBoxTextures[5];
-		cmdBindDescriptors(cmd, pRootSignature, 7, params);
+		params[7].pName = "image";
+		params[7].ppTextures = &particlesTexture;
+		
+		cmdBindDescriptors(cmd, pRootSignature, _countof(params), params);
 		cmdBindVertexBuffer(cmd, 1, &pSkyBoxVertexBuffer, NULL);
 		cmdDraw(cmd, 36, 0);
 		cmdEndDebugMarker(cmd);
-
-
-		{
-			cmdBeginDebugMarker(cmd, 1, 1, 1, "Draw floor");
-			cmdBindPipeline(cmd, floorPipeline);
-
-			params[0].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
-			cmdBindDescriptors(cmd, pRootSignature, 1, params);
-			cmdBindVertexBuffer(cmd, 1, &floorVertices, nullptr);
-			
-			cmdDraw(cmd, floorVertexCount, 0);
-
-			cmdEndDebugMarker(cmd);
-		}
 
 		////// draw planets
 		cmdBeginDebugMarker(cmd, 1, 0, 1, "Draw Planets");
@@ -784,6 +905,32 @@ public:
 		cmdBindVertexBuffer(cmd, 1, &pSphereVertexBuffer, NULL);
 		cmdDrawInstanced(cmd, gNumberOfSpherePoints / 6, 0, gNumPlanets, 0);
 		cmdEndDebugMarker(cmd);
+
+		{
+			cmdBeginDebugMarker(cmd, 1, 1, 1, "Draw floor");
+			cmdBindPipeline(cmd, floorPipeline);
+
+			params[0].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
+			cmdBindDescriptors(cmd, pRootSignature, 1, params);
+			cmdBindVertexBuffer(cmd, 1, &floorVertices, nullptr);
+
+			cmdDraw(cmd, floorVertexCount, 0);
+
+			cmdEndDebugMarker(cmd);
+
+			//
+
+			cmdBeginDebugMarker(cmd, 0.5f, 0.5f, 1, "Draw particles");
+			cmdBindPipeline(cmd, particlesPipeline);
+
+			params[0].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
+			cmdBindDescriptors(cmd, pRootSignature, 1, params);
+			cmdBindVertexBuffer(cmd, 1, &particleVertices, nullptr);
+
+			cmdDraw(cmd, particleVertexCount, 0);
+
+			cmdEndDebugMarker(cmd);
+		}
 
 		cmdBeginDebugMarker(cmd, 0, 1, 0, "Draw UI");
 		static HiresTimer gTimer;

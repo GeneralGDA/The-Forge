@@ -192,6 +192,8 @@
     <None Include="..\src\01_Transformations\Shaders\PCDX12\basic.vert" />
     <None Include="..\src\01_Transformations\Shaders\PCDX12\floor.frag" />
     <None Include="..\src\01_Transformations\Shaders\PCDX12\floor.vert" />
+    <None Include="..\src\01_Transformations\Shaders\PCDX12\particle.frag" />
+    <None Include="..\src\01_Transformations\Shaders\PCDX12\particle.vert" />
     <None Include="..\src\01_Transformations\Shaders\PCDX12\skybox.frag" />
     <None Include="..\src\01_Transformations\Shaders\PCDX12\skybox.vert" />
   </ItemGroup>

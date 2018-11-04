@@ -1,10 +1,9 @@
-// Shader for Skybox in Unit Test 01 - Transformations
-
 #define MAX_PLANETS 20
 
 cbuffer uniformBlock : register(b0)
 {
     float4x4 mvp;
+	float4x4 camera;
     float4x4 toWorld[MAX_PLANETS];
     float4 color[MAX_PLANETS];
 

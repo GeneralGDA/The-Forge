@@ -3,6 +3,7 @@
 cbuffer uniformBlock : register(b0)
 {
     float4x4 mvp;
+	float4x4 camera;
     float4x4 toWorld[MAX_PLANETS];
     float4 color[MAX_PLANETS];
 
@@ -11,12 +12,16 @@ cbuffer uniformBlock : register(b0)
     float3 lightColor;
 };
 
+SamplerState particleImageSampler : register(s8);
+Texture2D image : register(t7);
+
 struct VSOutput 
 {
-	float4 Position : SV_POSITION;
+	float4 position : SV_POSITION;
+	float2 texCoord : TEXCOORD;
 };
 
 float4 main(VSOutput input) : SV_TARGET
 {
-    return float4(1.0f, 0.0f, 0.0f, 1.0f);
+	return image.Sample(particleImageSampler, input.texCoord);
 }
