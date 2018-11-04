@@ -155,6 +155,13 @@ TextDrawDesc gFrameTimeDraw = TextDrawDesc(0, 0xff00ffff, 18);
 
 class Transformations : public IApp
 {
+private:
+
+	static const int floorVertexCount = 6;
+	Shader* floorShader = nullptr;
+	Buffer* floorVertices = nullptr;
+	Pipeline* floorPipeline = nullptr;
+
 public:
 	bool Init()
 	{
@@ -325,6 +332,42 @@ public:
 			ubDesc.ppBuffer = &pSkyboxUniformBuffer[i];
 			addResource(&ubDesc);
 		}
+
+		//==
+		{
+			ShaderLoadDesc floorShaderSource = {};
+			floorShaderSource.mStages[0] = { "floor.vert", nullptr, 0, FSR_SrcShaders };
+			floorShaderSource.mStages[1] = { "floor.frag", nullptr, 0, FSR_SrcShaders };
+			addShader(pRenderer, &floorShaderSource, &floorShader);
+
+			const auto floorHalfSize = 300.0f;
+
+			const auto FLOATS_PER_FLOOR_VERTEX = 3;
+
+			float floorMeshPositions[] =
+			{
+				-floorHalfSize, 0.0f, +floorHalfSize,
+				+floorHalfSize, 0.0f, +floorHalfSize,
+				+floorHalfSize, 0.0f, -floorHalfSize,
+
+				-floorHalfSize, 0.0f, -floorHalfSize,
+				-floorHalfSize, 0.0f, +floorHalfSize,
+				+floorHalfSize, 0.0f, -floorHalfSize,
+			};
+
+			ASSERT( 0 == (sizeof(floorMeshPositions) / sizeof(float)) % FLOATS_PER_FLOOR_VERTEX );
+			ASSERT(floorVertexCount * sizeof(float) * FLOATS_PER_FLOOR_VERTEX == sizeof(floorMeshPositions));
+
+			BufferLoadDesc floorVertexBufferDescription = {};
+			floorVertexBufferDescription.mDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
+			floorVertexBufferDescription.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_GPU_ONLY;
+			floorVertexBufferDescription.mDesc.mSize = sizeof(floorMeshPositions);
+			floorVertexBufferDescription.mDesc.mVertexStride = sizeof(float) * FLOATS_PER_FLOOR_VERTEX;
+			floorVertexBufferDescription.pData = floorMeshPositions;
+			floorVertexBufferDescription.ppBuffer = &floorVertices;
+			addResource(&floorVertexBufferDescription);
+		}
+
 		finishResourceLoading();
 
 		// Setup planets (Rotation speeds are relative to Earth's, some values randomly given)
@@ -443,6 +486,7 @@ public:
 		pCameraController->setMotionParameters(cmp);
 
 		InputSystem::RegisterInputEvent(cameraInputEvent);
+
 		return true;
 	}
 
@@ -470,6 +514,11 @@ public:
 
 		for (uint i = 0; i < 6; ++i)
 			removeResource(pSkyBoxTextures[i]);
+
+		{
+			removeShader(pRenderer, floorShader);
+			removeResource(floorVertices);
+		}
 
 		removeSampler(pRenderer, pSamplerSkyBox);
 		removeShader(pRenderer, pSphereShader);
@@ -540,6 +589,17 @@ public:
 		pipelineSettings.pRasterizerState = pSphereRast;
 		addPipeline(pRenderer, &pipelineSettings, &pSpherePipeline);
 
+		// floor pipeline
+		vertexLayout = {};
+		vertexLayout.mAttribCount = 1;
+		vertexLayout.mAttribs[0].mSemantic = SEMANTIC_POSITION;
+		vertexLayout.mAttribs[0].mFormat = ImageFormat::RGB32F;
+		vertexLayout.mAttribs[0].mBinding = 0;
+		vertexLayout.mAttribs[0].mLocation = 0;
+		vertexLayout.mAttribs[0].mOffset = 0;
+		pipelineSettings.pShaderProgram = floorShader;
+		addPipeline(pRenderer, &pipelineSettings, &floorPipeline);
+
 		//layout and pipeline for skybox draw
 		vertexLayout = {};
 		vertexLayout.mAttribCount = 1;
@@ -569,6 +629,7 @@ public:
 
 		removePipeline(pRenderer, pSkyBoxDrawPipeline);
 		removePipeline(pRenderer, pSpherePipeline);
+		removePipeline(pRenderer, floorPipeline);
 
 		removeSwapChain(pRenderer, pSwapChain);
 		removeRenderTarget(pRenderer, pDepthBuffer);
@@ -700,6 +761,20 @@ public:
 		cmdBindVertexBuffer(cmd, 1, &pSkyBoxVertexBuffer, NULL);
 		cmdDraw(cmd, 36, 0);
 		cmdEndDebugMarker(cmd);
+
+
+		{
+			cmdBeginDebugMarker(cmd, 1, 1, 1, "Draw floor");
+			cmdBindPipeline(cmd, floorPipeline);
+
+			params[0].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
+			cmdBindDescriptors(cmd, pRootSignature, 1, params);
+			cmdBindVertexBuffer(cmd, 1, &floorVertices, nullptr);
+			
+			cmdDraw(cmd, floorVertexCount, 0);
+
+			cmdEndDebugMarker(cmd);
+		}
 
 		////// draw planets
 		cmdBeginDebugMarker(cmd, 1, 0, 1, "Draw Planets");
