@@ -65,6 +65,7 @@ struct UniformBlock
 {
 	mat4 mProjectView;
 	mat4 mCamera;
+	vec4 zProjection;
 	mat4 mToWorldMat[MAX_PLANETS];
 	vec4 mColor[MAX_PLANETS];
 
@@ -174,6 +175,7 @@ private:
 	RasterizerState* particlesRasterizerState = nullptr;
 	Texture* particlesTexture = nullptr;
 	Sampler* particleImageSampler = nullptr;
+	RootSignature* particlesRootSignature = nullptr;
 
 	void prepareFloorResources()
 	{
@@ -289,6 +291,21 @@ private:
 		samplerDescription.mMaxAnisotropy = 16;
 		samplerDescription.mCompareFunc = CMP_ALWAYS;
 		addSampler(pRenderer, &samplerDescription, &particleImageSampler);
+
+
+		{
+			Shader* particlesShaders[] = { particlesShader };
+			const char* staticSamplersNames[] = { "particleImageSampler" };
+			Sampler* staticSamplers[] = { particleImageSampler };
+
+			RootSignatureDesc rootDescription = {};
+			rootDescription.mStaticSamplerCount = _countof(staticSamplersNames);
+			rootDescription.ppStaticSamplerNames = staticSamplersNames;
+			rootDescription.ppStaticSamplers = staticSamplers;
+			rootDescription.mShaderCount = _countof(particlesShaders);
+			rootDescription.ppShaders = particlesShaders;
+			addRootSignature(pRenderer, &rootDescription, &particlesRootSignature);
+		}
 	}
 
 public:
@@ -359,9 +376,9 @@ public:
 		};
 		addSampler(pRenderer, &samplerDesc, &pSamplerSkyBox);
 
-		Shader* shaders[] = { pSphereShader, pSkyBoxDrawShader, particlesShader };
-		const char* pStaticSamplersNames[] = { "uSampler0", "particleImageSampler" };
-		Sampler* staticSamplers[] = { pSamplerSkyBox , particleImageSampler };
+		Shader* shaders[] = { pSphereShader, pSkyBoxDrawShader, floorShader };
+		const char* pStaticSamplersNames[] = { "uSampler0" };
+		Sampler* staticSamplers[] = { pSamplerSkyBox };
 		RootSignatureDesc rootDesc = {};
 		rootDesc.mStaticSamplerCount = _countof(pStaticSamplersNames);
 		rootDesc.ppStaticSamplerNames = pStaticSamplersNames;
@@ -622,7 +639,6 @@ public:
 			removeResource(floorVertices);
 			removeRasterizerState(floorRasterizerState);
 
-			removeShader(pRenderer, particlesShader);
 			removeResource(particleVertices);
 			removeRasterizerState(particlesRasterizerState);
 
@@ -631,6 +647,8 @@ public:
 
 			removeSampler(pRenderer, particleImageSampler);
 			removeResource(particlesTexture);
+			removeShader(pRenderer, particlesShader);
+			removeRootSignature(pRenderer, particlesRootSignature);
 		}
 
 		removeSampler(pRenderer, pSamplerSkyBox);
@@ -726,6 +744,7 @@ public:
 		pipelineSettings.pBlendState = particlesBlendState;
 		pipelineSettings.pDepthState = particlesDepthState;
 		pipelineSettings.pRasterizerState = particlesRasterizerState;
+		pipelineSettings.pRootSignature = particlesRootSignature;
 		addPipeline(pRenderer, &pipelineSettings, &particlesPipeline);
 
 		//layout and pipeline for skybox draw
@@ -740,6 +759,7 @@ public:
 		pipelineSettings.pDepthState = NULL;
 		pipelineSettings.pRasterizerState = pSkyboxRast;
 		pipelineSettings.pShaderProgram = pSkyBoxDrawShader;
+		pipelineSettings.pRootSignature = pRootSignature;
 		addPipeline(pRenderer, &pipelineSettings, &pSkyBoxDrawPipeline);
 
 		return true;
@@ -787,9 +807,15 @@ public:
 
 		const float aspectInverse = (float)mSettings.mHeight / (float)mSettings.mWidth;
 		const float horizontal_fov = PI / 2.0f;
-		mat4 projMat = mat4::perspective(horizontal_fov, aspectInverse, 0.1f, 1000.0f);
+		const float zNear = 0.1f;
+		const float zFar = 1000.0f;
+		mat4 projMat = mat4::perspective(horizontal_fov, aspectInverse, zNear, zFar);
 		gUniformData.mProjectView = projMat * viewMat;
 		gUniformData.mCamera = viewMat;
+		gUniformData.zProjection.setX(zFar / (zFar - zNear));
+		gUniformData.zProjection.setY(- zFar * zNear / (zFar - zNear));
+		gUniformData.zProjection.setZ(0);
+		gUniformData.zProjection.setW(0);
 
 		// point light parameters
 		gUniformData.mLightPosition = vec3(0, 0, 0);
@@ -821,6 +847,10 @@ public:
 		gUniformDataSky = gUniformData;
 		gUniformDataSky.mProjectView = projMat * viewMat;
 		gUniformDataSky.mCamera = viewMat;
+		gUniformData.zProjection.setX(zFar / (zFar - zNear));
+		gUniformData.zProjection.setY(-zFar * zNear / (zFar - zNear));
+		gUniformData.zProjection.setZ(0);
+		gUniformData.zProjection.setW(0);
 		/************************************************************************/
 		/************************************************************************/
 	}
@@ -874,7 +904,7 @@ public:
 		cmdBeginDebugMarker(cmd, 0, 0, 1, "Draw skybox");
 		cmdBindPipeline(cmd, pSkyBoxDrawPipeline);
 
-		DescriptorData params[8] = {};
+		DescriptorData params[7] = {};
 		params[0].pName = "uniformBlock";
 		params[0].ppBuffers = &pSkyboxUniformBuffer[gFrameIndex];
 		params[1].pName = "RightText";
@@ -889,9 +919,7 @@ public:
 		params[5].ppTextures = &pSkyBoxTextures[4];
 		params[6].pName = "BackText";
 		params[6].ppTextures = &pSkyBoxTextures[5];
-		params[7].pName = "image";
-		params[7].ppTextures = &particlesTexture;
-		
+				
 		cmdBindDescriptors(cmd, pRootSignature, _countof(params), params);
 		cmdBindVertexBuffer(cmd, 1, &pSkyBoxVertexBuffer, NULL);
 		cmdDraw(cmd, 36, 0);
@@ -907,27 +935,37 @@ public:
 		cmdEndDebugMarker(cmd);
 
 		{
+			//
+
 			cmdBeginDebugMarker(cmd, 1, 1, 1, "Draw floor");
-			cmdBindPipeline(cmd, floorPipeline);
 
-			params[0].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
-			cmdBindDescriptors(cmd, pRootSignature, 1, params);
-			cmdBindVertexBuffer(cmd, 1, &floorVertices, nullptr);
-
-			cmdDraw(cmd, floorVertexCount, 0);
+				cmdBindPipeline(cmd, floorPipeline);
+				params[0].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
+				cmdBindDescriptors(cmd, pRootSignature, 1, params);
+				cmdBindVertexBuffer(cmd, 1, &floorVertices, nullptr);
+				cmdDraw(cmd, floorVertexCount, 0);
 
 			cmdEndDebugMarker(cmd);
 
 			//
 
 			cmdBeginDebugMarker(cmd, 0.5f, 0.5f, 1, "Draw particles");
-			cmdBindPipeline(cmd, particlesPipeline);
 
-			params[0].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
-			cmdBindDescriptors(cmd, pRootSignature, 1, params);
-			cmdBindVertexBuffer(cmd, 1, &particleVertices, nullptr);
-
-			cmdDraw(cmd, particleVertexCount, 0);
+				cmdBindPipeline(cmd, particlesPipeline);
+				params[0].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
+				params[1].pName = "image";
+				params[1].ppTextures = &particlesTexture;
+				params[2].pName = "depthBuffer";
+				params[2].ppTextures = &pDepthBuffer->pTexture;
+				TextureBarrier zReadBarrier[] =
+				{
+					{ pRenderTarget->pTexture, RESOURCE_STATE_RENDER_TARGET },
+					{ pDepthBuffer->pTexture, RESOURCE_STATE_DEPTH_READ | RESOURCE_STATE_SHADER_RESOURCE },
+				};
+				cmdResourceBarrier(cmd, 0, nullptr, _countof(zReadBarrier), zReadBarrier, false);
+				cmdBindDescriptors(cmd, particlesRootSignature, 3, params);
+				cmdBindVertexBuffer(cmd, 1, &particleVertices, nullptr);
+				cmdDraw(cmd, particleVertexCount, 0);
 
 			cmdEndDebugMarker(cmd);
 		}

@@ -4,6 +4,7 @@ cbuffer uniformBlock : register(b0)
 {
     float4x4 mvp;
 	float4x4 camera;
+	float4 zProjection; // x <- scale, y <- bias
     float4x4 toWorld[MAX_PLANETS];
     float4 color[MAX_PLANETS];
 
@@ -16,6 +17,7 @@ struct VSOutput
 {
 	float4 position : SV_POSITION;
 	float2 texCoord : TEXCOORD;
+	float cameraSpaceDepth : LINEAR_DEPTH;
 };
 
 VSOutput main(float4 size : POSITION)
@@ -28,7 +30,8 @@ VSOutput main(float4 size : POSITION)
 	float3 position = center + xAxis * size.x + yAxis * size.y;
  
     result.position = mul(mvp, float4(position, 1.0f));
-    
+    result.cameraSpaceDepth = dot(camera[2], float4(position, 1.0f));
+
 	if (size.x > 0 && size.y > 0)
 	{
 		result.texCoord = float2(1, 0);
