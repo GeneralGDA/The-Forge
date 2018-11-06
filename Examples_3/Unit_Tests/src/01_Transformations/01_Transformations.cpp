@@ -195,6 +195,10 @@ private:
 
 	Emitter emitter;
 
+	Particles particlesPerInstances;
+	Buffer* particlesPerInstanceData[gImageCount] = { nullptr };
+	int particlesCount[gImageCount] = { 0 };
+
 	void prepareFloorResources()
 	{
 		ShaderLoadDesc floorShaderSource = {};
@@ -324,6 +328,18 @@ private:
 			rootDescription.ppShaders = particlesShaders;
 			addRootSignature(pRenderer, &rootDescription, &particlesRootSignature);
 		}
+
+		BufferLoadDesc perInstanceBufferDescription = {};
+		perInstanceBufferDescription.mDesc.mDescriptors = DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		perInstanceBufferDescription.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_CPU_TO_GPU;
+		perInstanceBufferDescription.mDesc.mSize = sizeof(Particles);
+		perInstanceBufferDescription.mDesc.mFlags = BUFFER_CREATION_FLAG_PERSISTENT_MAP_BIT;
+		perInstanceBufferDescription.pData = nullptr;
+		for (auto& instance : particlesPerInstanceData)
+		{
+			perInstanceBufferDescription.ppBuffer = &instance;
+			addResource(&perInstanceBufferDescription);
+		}
 	}
 
 public:
@@ -332,8 +348,7 @@ public:
 	Transformations()
 		:
 		emitter(MAX_PARTICLES_COUNT, PARTICLES_STYLES_COUNT)
-	{
-		
+	{	
 	}
 
 	bool Init()
@@ -675,6 +690,11 @@ public:
 			removeResource(particlesTexture);
 			removeShader(pRenderer, particlesShader);
 			removeRootSignature(pRenderer, particlesRootSignature);
+
+			for (auto particleInstancesData : particlesPerInstanceData)
+			{
+				removeResource(particleInstancesData);
+			}
 		}
 
 		removeSampler(pRenderer, pSamplerSkyBox);
@@ -871,6 +891,10 @@ public:
 
 		emitter.update(deltaTime, viewMat);
 
+		const auto particlesComponentMultiplier = sizeof(float) * emitter.getAliveParticlesCount();
+		::memcpy(particlesPerInstances.positions, emitter.getPositions(), particlesComponentMultiplier * 3);
+		::memcpy(particlesPerInstances.timeAndStyle, emitter.getBehaviors(), particlesComponentMultiplier * 2);
+		
 		viewMat.setTranslation(vec3(0));
 		gUniformDataSky = gUniformData;
 		gUniformDataSky.mProjectView = projMat * viewMat;
@@ -903,6 +927,9 @@ public:
 
 		BufferUpdateDesc skyboxViewProjCbv = { pSkyboxUniformBuffer[gFrameIndex], &gUniformDataSky };
 		updateResource(&skyboxViewProjCbv);
+
+		BufferUpdateDesc particlesUpdateDescription = { particlesPerInstanceData[gFrameIndex], &particlesPerInstances };
+		updateResource(&particlesUpdateDescription);
 
 		// simply record the screen cleaning command
 		LoadActionsDesc loadActions = {};
@@ -985,15 +1012,17 @@ public:
 				params[1].ppTextures = &particlesTexture;
 				params[2].pName = "depthBuffer";
 				params[2].ppTextures = &pDepthBuffer->pTexture;
+				params[3].pName = "particlesInstances";
+				params[3].ppBuffers = &particlesPerInstanceData[gFrameIndex];
 				TextureBarrier zReadBarrier[] =
 				{
 					{ pRenderTarget->pTexture, RESOURCE_STATE_RENDER_TARGET },
 					{ pDepthBuffer->pTexture, RESOURCE_STATE_DEPTH_READ | RESOURCE_STATE_SHADER_RESOURCE },
 				};
 				cmdResourceBarrier(cmd, 0, nullptr, _countof(zReadBarrier), zReadBarrier, false);
-				cmdBindDescriptors(cmd, particlesRootSignature, 3, params);
+				cmdBindDescriptors(cmd, particlesRootSignature, 4, params);
 				cmdBindVertexBuffer(cmd, 1, &particleVertices, nullptr);
-				cmdDraw(cmd, particleVertexCount, 0);
+				cmdDrawInstanced(cmd, particleVertexCount, 0, emitter.getAliveParticlesCount(), 0);
 
 			cmdEndDebugMarker(cmd);
 		}

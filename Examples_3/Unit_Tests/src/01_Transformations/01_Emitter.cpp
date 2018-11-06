@@ -17,7 +17,7 @@ const auto PARTICLE_EMIT_PERIOD = 1.0f / PARTICLES_PER_SECOND;
 const vec3 EMITTER_POSITION{10.0f, 0.0f, 0.0f};
 const auto EMITTER_EMIT_CUBE_HALF_SIZE = 0.5f;
 
-const vec3 PARTICLES_VELOCITY{0.0f, 0.1f, 0.0f};
+const vec3 PARTICLES_VELOCITY{0.0f, 4.0f, 0.0f};
 
 float random()
 {

@@ -13,6 +13,14 @@ cbuffer uniformBlock : register(b0)
     float3 lightColor;
 };
 
+#define MAX_PARTICLES_COUNT 300
+
+cbuffer particlesInstances : register(b1)
+{
+	float3 positions[MAX_PARTICLES_COUNT];
+	float2 timeAndStyle[MAX_PARTICLES_COUNT];
+};
+
 struct VSOutput 
 {
 	float4 position : SV_POSITION;
@@ -20,14 +28,14 @@ struct VSOutput
 	float cameraSpaceDepth : LINEAR_DEPTH;
 };
 
-VSOutput main(float4 size : POSITION)
+VSOutput main(float4 size : POSITION, uint InstanceID : SV_InstanceID)
 {
 	VSOutput result;
 
 	float3 center = float3(100, 0, 0);
 	float3 xAxis = camera[0].xyz;
 	float3 yAxis = camera[1].xyz;
-	float3 position = center + xAxis * size.x + yAxis * size.y;
+	float3 position = positions[InstanceID] + xAxis * size.x + yAxis * size.y;
  
     result.position = mul(mvp, float4(position, 1.0f));
     result.cameraSpaceDepth = dot(camera[2], float4(position, 1.0f));
