@@ -18,6 +18,9 @@
     <ClCompile Include="..\src\01_Transformations\01_Transformations.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\01_Transformations\01_Emitter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="..\src\01_Transformations\Shaders\PCVulkan\basic.frag">
@@ -58,5 +61,10 @@
     <None Include="..\src\01_Transformations\Shaders\PCDX12\particle.vert">
       <Filter>Shaders\PCDX12</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\01_Transformations\01_Emitter.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

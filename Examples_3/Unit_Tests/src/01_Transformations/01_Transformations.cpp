@@ -25,6 +25,8 @@
 // Unit Test for testing transformations using a solar system.
 // Tests the basic mat4 transformations, such as scaling, rotation, and translation.
 
+#include "01_Emitter.h"
+
 #define MAX_PLANETS 20 // Does not affect test, just for allocating space in uniform block. Must match with shader.
 
 //tiny stl
@@ -72,6 +74,20 @@ struct UniformBlock
 	// Point Light Information
 	vec3 mLightPosition;
 	vec3 mLightColor;
+};
+
+namespace
+{
+
+const int PARTICLES_STYLES_COUNT = 2;
+const int MAX_PARTICLES_COUNT = 300;
+
+} // namespace
+
+struct Particles final
+{
+	float positions[3 * MAX_PARTICLES_COUNT];
+	float timeAndStyle[2 * MAX_PARTICLES_COUNT];
 };
 
 const uint32_t	  gImageCount = 3;
@@ -176,6 +192,8 @@ private:
 	Texture* particlesTexture = nullptr;
 	Sampler* particleImageSampler = nullptr;
 	RootSignature* particlesRootSignature = nullptr;
+
+	Emitter emitter;
 
 	void prepareFloorResources()
 	{
@@ -309,6 +327,14 @@ private:
 	}
 
 public:
+
+
+	Transformations()
+		:
+		emitter(MAX_PARTICLES_COUNT, PARTICLES_STYLES_COUNT)
+	{
+		
+	}
 
 	bool Init()
 	{
@@ -842,6 +868,8 @@ public:
 			gUniformData.mToWorldMat[i] = parentMat *  rotOrbitY * rotOrbitZ * trans * rotSelf * scale;
 			gUniformData.mColor[i] = gPlanetInfoData[i].mColor;
 		}
+
+		emitter.update(deltaTime, viewMat);
 
 		viewMat.setTranslation(vec3(0));
 		gUniformDataSky = gUniformData;

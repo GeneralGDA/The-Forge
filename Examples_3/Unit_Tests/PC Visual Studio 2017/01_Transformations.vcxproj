@@ -27,6 +27,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\01_Transformations\01_Emitter.cpp" />
     <ClCompile Include="..\src\01_Transformations\01_Transformations.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -196,6 +197,9 @@
     <None Include="..\src\01_Transformations\Shaders\PCDX12\particle.vert" />
     <None Include="..\src\01_Transformations\Shaders\PCDX12\skybox.frag" />
     <None Include="..\src\01_Transformations\Shaders\PCDX12\skybox.vert" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\01_Transformations\01_Emitter.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{5938554B-1112-4A6D-9CA0-EDEA01CB7F3F}</ProjectGuid>
