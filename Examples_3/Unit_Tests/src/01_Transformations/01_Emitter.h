@@ -31,7 +31,6 @@ private:
 
 	void emitParticle(int index, float startTime);
 	void removeDeadParticles();
-	void sortParticles(const mat4& camera);
 
 public:
 
@@ -39,11 +38,13 @@ public:
 
 	Emitter(int maxParticlesCount, int stylesCount);
 
-	void update(float timeDeltaSeconds, const mat4& camera);
+	void update(float timeDeltaSeconds);
 
 	int getAliveParticlesCount() const;
 
-	const float* getPositions() const;
-	const float* getBehaviors() const;
+	void sort(const mat4& camera);
+
+	const float* getPositions();
+	const float* getBehaviors();
 
 };

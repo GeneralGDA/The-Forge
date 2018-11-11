@@ -61,6 +61,18 @@
     <None Include="..\src\01_Transformations\Shaders\PCDX12\particle.vert">
       <Filter>Shaders\PCDX12</Filter>
     </None>
+    <None Include="..\src\01_Transformations\Shaders\PCDX12\particle_color_out.frag">
+      <Filter>Shaders\PCDX12</Filter>
+    </None>
+    <None Include="..\src\01_Transformations\Shaders\PCDX12\particle_color_out.vert">
+      <Filter>Shaders\PCDX12</Filter>
+    </None>
+    <None Include="..\src\01_Transformations\Shaders\PCDX12\particle_depth_out.frag">
+      <Filter>Shaders\PCDX12</Filter>
+    </None>
+    <None Include="..\src\01_Transformations\Shaders\PCDX12\particle_depth_out.vert">
+      <Filter>Shaders\PCDX12</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\01_Transformations\01_Emitter.h">

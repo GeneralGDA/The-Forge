@@ -199,10 +199,21 @@ private:
 	Sampler* particleImageSampler = nullptr;
 	RootSignature* particlesRootSignature = nullptr;
 
+	RenderTarget* shadowMap = nullptr;
+	RenderTarget* shadowMapColorFilter = nullptr;
+	Pipeline* shadowPassDephtPipeline = nullptr;
+	Pipeline* shadowPassColorPipeline = nullptr;
+	DepthState* depthStencilStateDisableAll = nullptr;
+	Shader* particlesDepthOutShader = nullptr;
+	Shader* particlesColorOutShader = nullptr;
+
 	Emitter emitter;
 
-	Particles particles;
+	Particles particlesFinalRender;
+	Particles particlesShadowMap;
+
 	Buffer* particlesPerInstanceData[gImageCount] = { nullptr };
+	Buffer* particlesPerInstanceDataShadowMap[gImageCount] = { nullptr };
 
 	void prepareFloorResources()
 	{
@@ -249,6 +260,16 @@ private:
 		particlesShaderSource.mStages[0] = { "particle.vert", nullptr, 0, FSR_SrcShaders };
 		particlesShaderSource.mStages[1] = { "particle.frag", nullptr, 0, FSR_SrcShaders };
 		addShader(pRenderer, &particlesShaderSource, &particlesShader);
+
+		ShaderLoadDesc particlesShadowDepthOutShaderSource = {};
+		particlesShadowDepthOutShaderSource.mStages[0] = { "particle_depth_out.vert", nullptr, 0, FSR_SrcShaders };
+		particlesShadowDepthOutShaderSource.mStages[1] = { "particle_depth_out.frag", nullptr, 0, FSR_SrcShaders };
+		addShader(pRenderer, &particlesShadowDepthOutShaderSource, &particlesDepthOutShader);
+
+		ShaderLoadDesc particlesShadowDepthColorShaderSource = {};
+		particlesShadowDepthColorShaderSource.mStages[0] = { "particle_color_out.vert", nullptr, 0, FSR_SrcShaders };
+		particlesShadowDepthColorShaderSource.mStages[1] = { "particle_color_out.frag", nullptr, 0, FSR_SrcShaders };
+		addShader(pRenderer, &particlesShadowDepthColorShaderSource, &particlesColorOutShader);
 
 		const auto FLOATS_PER_PARTICLE_VERTEX = 2;
 		const auto VERTICES_PER_PARTICLE = 6;
@@ -321,7 +342,7 @@ private:
 
 
 		{
-			Shader* particlesShaders[] = { particlesShader };
+			Shader* particlesShaders[] = { particlesShader, particlesDepthOutShader, particlesColorOutShader };
 			const char* staticSamplersNames[] = { "particleImageSampler" };
 			Sampler* staticSamplers[] = { particleImageSampler };
 
@@ -337,7 +358,7 @@ private:
 		BufferLoadDesc perInstanceBufferDescription = {};
 		perInstanceBufferDescription.mDesc.mDescriptors = DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		perInstanceBufferDescription.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_CPU_TO_GPU;
-		perInstanceBufferDescription.mDesc.mSize = sizeof(particles);
+		perInstanceBufferDescription.mDesc.mSize = sizeof(Particles);
 		perInstanceBufferDescription.mDesc.mFlags = BUFFER_CREATION_FLAG_PERSISTENT_MAP_BIT;
 		perInstanceBufferDescription.pData = nullptr;
 		for (auto& instance : particlesPerInstanceData)
@@ -345,21 +366,68 @@ private:
 			perInstanceBufferDescription.ppBuffer = &instance;
 			addResource(&perInstanceBufferDescription);
 		}
+		for (auto& instance : particlesPerInstanceDataShadowMap)
+		{
+			perInstanceBufferDescription.ppBuffer = &instance;
+			addResource(&perInstanceBufferDescription);
+		}
 
-		particles.particlesLifeLength = Emitter::LIFE_LENGTH_SECONDS;
+		particlesFinalRender.particlesLifeLength = Emitter::LIFE_LENGTH_SECONDS;
+		particlesShadowMap.particlesLifeLength = Emitter::LIFE_LENGTH_SECONDS;
 
 		auto styleCounter = 0;
 
-		particles.colorAndSizeScale[styleCounter++] = vec4{1.0f, 0.0f, 0.0f, 0.5f};
-		particles.colorAndSizeScale[styleCounter++] = vec4{0.0f, 1.0f, 0.0f, 0.8f};
-		particles.colorAndSizeScale[styleCounter++] = vec4{0.0f, 0.0f, 1.0f, 1.0f};
+		particlesFinalRender.colorAndSizeScale[styleCounter] = vec4{1.0f, 0.0f, 0.0f, 0.5f};
+		particlesShadowMap.colorAndSizeScale[styleCounter++] = vec4{1.0f, 0.0f, 0.0f, 0.5f};
+
+		particlesFinalRender.colorAndSizeScale[styleCounter] = vec4{0.0f, 1.0f, 0.0f, 0.8f};
+		particlesShadowMap.colorAndSizeScale[styleCounter++] = vec4{0.0f, 1.0f, 0.0f, 0.8f};
+
+		particlesFinalRender.colorAndSizeScale[styleCounter] = vec4{0.0f, 0.0f, 1.0f, 1.0f};
+		particlesShadowMap.colorAndSizeScale[styleCounter++] = vec4{0.0f, 0.0f, 1.0f, 1.0f};
 		
-		ASSERT(styleCounter == _countof(particles.colorAndSizeScale));
+		ASSERT(styleCounter == _countof(particlesShadowMap.colorAndSizeScale));
+		ASSERT(styleCounter == _countof(particlesFinalRender.colorAndSizeScale));
+
+		const ClearValue maxClearValue = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+		RenderTargetDesc shadowMapDescription = {};
+		shadowMapDescription.mArraySize = 1;
+		shadowMapDescription.mClearValue = maxClearValue;
+		shadowMapDescription.mDepth = 1;
+		shadowMapDescription.mMipLevels = 1;
+		shadowMapDescription.mFlags = TEXTURE_CREATION_FLAG_NONE;
+		shadowMapDescription.mFormat = ImageFormat::R32F;
+		shadowMapDescription.mWidth = mSettings.mWidth;
+		shadowMapDescription.mHeight = mSettings.mHeight;
+		shadowMapDescription.mSampleCount = SAMPLE_COUNT_1;
+		shadowMapDescription.mSampleQuality = 0;
+		shadowMapDescription.pDebugName = L"Shadow Map Render Target";
+
+		addRenderTarget(pRenderer, &shadowMapDescription, &shadowMap);
+
+		RenderTargetDesc shadowMapColorFilterDescription = {};
+		shadowMapColorFilterDescription.mArraySize = 1;
+		shadowMapColorFilterDescription.mClearValue = maxClearValue;
+		shadowMapColorFilterDescription.mDepth = 1;
+		shadowMapColorFilterDescription.mFormat = ImageFormat::RGBA8;
+		shadowMapColorFilterDescription.mWidth = shadowMapDescription.mWidth;
+		shadowMapColorFilterDescription.mHeight = shadowMapDescription.mHeight;
+		shadowMapColorFilterDescription.mSampleCount = SAMPLE_COUNT_1;
+		shadowMapColorFilterDescription.mSampleQuality = 0;
+		shadowMapColorFilterDescription.pDebugName = L"Shadow Map Color Filter Render Target";
+
+		addRenderTarget(pRenderer, &shadowMapColorFilterDescription, &shadowMapColorFilter);
+
+		DepthStateDesc disableAllDepthStateDescription = {};
+		depthStateDescription.mDepthTest = false;
+		depthStateDescription.mDepthWrite = false;
+		depthStateDescription.mDepthFunc = CMP_ALWAYS;
+		addDepthState(pRenderer, &disableAllDepthStateDescription, &depthStencilStateDisableAll);
 	}
 
 public:
-
-
+	
 	Transformations()
 		:
 		emitter(MAX_PARTICLES_COUNT, PARTICLES_STYLES_COUNT)
@@ -706,10 +774,21 @@ public:
 			removeShader(pRenderer, particlesShader);
 			removeRootSignature(pRenderer, particlesRootSignature);
 
+			removeShader(pRenderer, particlesDepthOutShader);
+			
+			removeShader(pRenderer, particlesColorOutShader);
+
 			for (auto particleInstancesData : particlesPerInstanceData)
 			{
 				removeResource(particleInstancesData);
 			}
+			
+			for (auto particleInstancesData : particlesPerInstanceDataShadowMap)
+			{
+				removeResource(particleInstancesData);
+			}
+
+			removeDepthState(depthStencilStateDisableAll);
 		}
 
 		removeSampler(pRenderer, pSamplerSkyBox);
@@ -794,18 +873,19 @@ public:
 		addPipeline(pRenderer, &pipelineSettings, &floorPipeline);
 
 		// particle pipeline
-		vertexLayout = {};
-		vertexLayout.mAttribCount = 1;
-		vertexLayout.mAttribs[0].mSemantic = SEMANTIC_POSITION;
-		vertexLayout.mAttribs[0].mFormat = ImageFormat::RG32F;
-		vertexLayout.mAttribs[0].mBinding = 0;
-		vertexLayout.mAttribs[0].mLocation = 0;
-		vertexLayout.mAttribs[0].mOffset = 0;
+		VertexLayout particleVertexLayout = {};
+		particleVertexLayout.mAttribCount = 1;
+		particleVertexLayout.mAttribs[0].mSemantic = SEMANTIC_POSITION;
+		particleVertexLayout.mAttribs[0].mFormat = ImageFormat::RG32F;
+		particleVertexLayout.mAttribs[0].mBinding = 0;
+		particleVertexLayout.mAttribs[0].mLocation = 0;
+		particleVertexLayout.mAttribs[0].mOffset = 0;
 		pipelineSettings.pShaderProgram = particlesShader;
 		pipelineSettings.pBlendState = particlesBlendState;
 		pipelineSettings.pDepthState = particlesDepthState;
 		pipelineSettings.pRasterizerState = particlesRasterizerState;
 		pipelineSettings.pRootSignature = particlesRootSignature;
+		pipelineSettings.pVertexLayout = &particleVertexLayout;
 		addPipeline(pRenderer, &pipelineSettings, &particlesPipeline);
 
 		//layout and pipeline for skybox draw
@@ -821,7 +901,36 @@ public:
 		pipelineSettings.pRasterizerState = pSkyboxRast;
 		pipelineSettings.pShaderProgram = pSkyBoxDrawShader;
 		pipelineSettings.pRootSignature = pRootSignature;
+		pipelineSettings.pVertexLayout = &vertexLayout;
 		addPipeline(pRenderer, &pipelineSettings, &pSkyBoxDrawPipeline);
+
+		GraphicsPipelineDesc shadowMapDepthPipelineSettings = pipelineSettings;
+		shadowMapDepthPipelineSettings.mRenderTargetCount = 1;
+		shadowMapDepthPipelineSettings.pDepthState = depthStencilStateDisableAll;
+		shadowMapDepthPipelineSettings.mDepthStencilFormat = ImageFormat::NONE;
+		shadowMapDepthPipelineSettings.pColorFormats = &shadowMap->mDesc.mFormat;
+		shadowMapDepthPipelineSettings.pSrgbValues = &shadowMap->mDesc.mSrgb;
+		shadowMapDepthPipelineSettings.mSampleCount = shadowMap->mDesc.mSampleCount;
+		shadowMapDepthPipelineSettings.mSampleQuality = shadowMap->mDesc.mSampleQuality;
+		shadowMapDepthPipelineSettings.pRootSignature = particlesRootSignature;
+		shadowMapDepthPipelineSettings.pRasterizerState = particlesRasterizerState;
+		shadowMapDepthPipelineSettings.pShaderProgram = particlesDepthOutShader;
+		shadowMapDepthPipelineSettings.pVertexLayout = &particleVertexLayout;
+		addPipeline(pRenderer, &shadowMapDepthPipelineSettings, &shadowPassDephtPipeline);
+
+		GraphicsPipelineDesc shadowMapColorPipelineSettings = pipelineSettings;
+		shadowMapColorPipelineSettings.mRenderTargetCount = 1;
+		shadowMapColorPipelineSettings.pDepthState = depthStencilStateDisableAll;
+		shadowMapColorPipelineSettings.mDepthStencilFormat = ImageFormat::NONE;
+		shadowMapColorPipelineSettings.pColorFormats = &shadowMapColorFilter->mDesc.mFormat;
+		shadowMapColorPipelineSettings.pSrgbValues = &shadowMapColorFilter->mDesc.mSrgb;
+		shadowMapColorPipelineSettings.mSampleCount = shadowMapColorFilter->mDesc.mSampleCount;
+		shadowMapColorPipelineSettings.mSampleQuality = shadowMapColorFilter->mDesc.mSampleQuality;
+		shadowMapColorPipelineSettings.pRootSignature = particlesRootSignature;
+		shadowMapColorPipelineSettings.pRasterizerState = particlesRasterizerState;
+		shadowMapColorPipelineSettings.pShaderProgram = particlesColorOutShader;
+		shadowMapColorPipelineSettings.pVertexLayout = &particleVertexLayout;
+		addPipeline(pRenderer, &shadowMapColorPipelineSettings, &shadowPassColorPipeline);
 
 		return true;
 	}
@@ -841,6 +950,12 @@ public:
 		
 		removePipeline(pRenderer, floorPipeline);
 		removePipeline(pRenderer, particlesPipeline);
+		
+		removePipeline(pRenderer, shadowPassColorPipeline);
+		removePipeline(pRenderer, shadowPassDephtPipeline);
+
+		removeRenderTarget(pRenderer, shadowMap);
+		removeRenderTarget(pRenderer, shadowMapColorFilter);
 
 		removeSwapChain(pRenderer, pSwapChain);
 		removeRenderTarget(pRenderer, pDepthBuffer);
@@ -904,12 +1019,19 @@ public:
 			gUniformData.mColor[i] = gPlanetInfoData[i].mColor;
 		}
 
-		emitter.update(deltaTime, viewMat);
+		emitter.update(deltaTime);
 
 		const auto particlesComponentMultiplier = sizeof(float) * emitter.getAliveParticlesCount();
 		ASSERT(emitter.getAliveParticlesCount() <= MAX_PARTICLES_COUNT);
-		::memcpy(particles.positions, emitter.getPositions(), particlesComponentMultiplier * CONST_BUFFER_QUANT_SIZE);
-		::memcpy(particles.timeAndStyle, emitter.getBehaviors(), particlesComponentMultiplier * CONST_BUFFER_QUANT_SIZE);
+
+		emitter.sort(viewMat);
+		::memcpy(particlesFinalRender.positions, emitter.getPositions(), particlesComponentMultiplier * CONST_BUFFER_QUANT_SIZE);
+		::memcpy(particlesFinalRender.timeAndStyle, emitter.getBehaviors(), particlesComponentMultiplier * CONST_BUFFER_QUANT_SIZE);
+
+		emitter.sort(viewMat); // TODO!!
+		ASSERT(emitter.getAliveParticlesCount() <= MAX_PARTICLES_COUNT);
+		::memcpy(particlesShadowMap.positions, emitter.getPositions(), particlesComponentMultiplier * CONST_BUFFER_QUANT_SIZE);
+		::memcpy(particlesShadowMap.timeAndStyle, emitter.getBehaviors(), particlesComponentMultiplier * CONST_BUFFER_QUANT_SIZE);
 		
 		viewMat.setTranslation(vec3(0));
 		gUniformDataSky = gUniformData;
@@ -944,7 +1066,10 @@ public:
 		BufferUpdateDesc skyboxViewProjCbv = { pSkyboxUniformBuffer[gFrameIndex], &gUniformDataSky };
 		updateResource(&skyboxViewProjCbv);
 
-		BufferUpdateDesc particlesUpdateDescription = { particlesPerInstanceData[gFrameIndex], &particles };
+		BufferUpdateDesc particlesUpdateDescription = { particlesPerInstanceData[gFrameIndex], &particlesFinalRender };
+		updateResource(&particlesUpdateDescription);
+
+		BufferUpdateDesc particlesShadowMapUpdateDescription = { particlesPerInstanceDataShadowMap[gFrameIndex], &particlesShadowMap };
 		updateResource(&particlesUpdateDescription);
 
 		// simply record the screen cleaning command

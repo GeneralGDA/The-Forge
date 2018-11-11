@@ -76,22 +76,6 @@ void Emitter::emitParticle(const int index, const float startTime)
 	particle.position = EMITTER_POSITION + randomShift(EMITTER_EMIT_CUBE_HALF_SIZE) + PARTICLES_VELOCITY * startTime;
 }
 
-void Emitter::sortParticles(const mat4& camera)
-{
-	for (auto& particle : particles)
-	{
-		particle.cameraSpaceZ = dot(camera[2], vec4{particle.position, 1.0f});
-	}
-
-	std::sort(particles.begin(), particles.end()
-	, 
-		[](const auto& left, const auto& right)
-		{
-			return left.cameraSpaceZ < right.cameraSpaceZ;
-		}
-	);
-}
-
 void Emitter::removeDeadParticles()
 {
 	ASSERT( std::is_sorted(dead.begin(), dead.end()) );
@@ -107,7 +91,23 @@ void Emitter::removeDeadParticles()
 	particles.resize(particles.size() - dead.size());
 }
 
-void Emitter::update(const float timeDeltaSeconds, const mat4& camera)
+void Emitter::sort(const mat4& camera)
+{
+	for (auto& particle : particles)
+	{
+		particle.cameraSpaceZ = dot(camera[2], vec4{particle.position, 1.0f});
+	}
+
+	std::sort(particles.begin(), particles.end()
+	, 
+		[](const auto& left, const auto& right)
+		{
+			return left.cameraSpaceZ < right.cameraSpaceZ;
+		}
+	);
+}
+
+void Emitter::update(const float timeDeltaSeconds)
 {
 	ASSERT(0 <= timeDeltaSeconds);
 
@@ -170,10 +170,15 @@ void Emitter::update(const float timeDeltaSeconds, const mat4& camera)
 	{
 		removeDeadParticles();
 	}
+}
 
-	sortParticles(camera);
+int Emitter::getAliveParticlesCount() const
+{
+	return checkedCast(particles.size());
+}
 
-	outBehaviors.clear();
+const float* Emitter::getPositions()
+{
 	outPositions.clear();
 
 	for (auto& particle : particles)
@@ -182,25 +187,22 @@ void Emitter::update(const float timeDeltaSeconds, const mat4& camera)
 		outPositions.push_back(particle.position.getY());
 		outPositions.push_back(particle.position.getZ());
 		outPositions.push_back(0.0f);
-		
+	}
+
+	return outPositions.data();
+}
+
+const float* Emitter::getBehaviors()
+{
+	outBehaviors.clear();
+	
+	for (auto& particle : particles)
+	{
 		outBehaviors.push_back(particle.aliveTime);
 		outBehaviors.push_back(particle.styleNumber);
 		outBehaviors.push_back(0.0f);
 		outBehaviors.push_back(0.0f);
 	}
-}
 
-int Emitter::getAliveParticlesCount() const
-{
-	return checkedCast(particles.size());
-}
-
-const float* Emitter::getPositions() const
-{
-	return outPositions.data();
-}
-
-const float* Emitter::getBehaviors() const
-{
 	return outBehaviors.data();
 }
