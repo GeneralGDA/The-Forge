@@ -37,7 +37,7 @@ struct VSOutput
 
 float sizeScaleFromAge(float age)
 {
-	return 0.0f + age * 20.0f;
+	return 5.0f + age * 20.0f;
 }
 
 float alphaScaleFromAge(float age)
@@ -69,7 +69,7 @@ VSOutput main(float4 size : POSITION, uint InstanceID : SV_InstanceID)
 
 	float timeRelative = aliveTime / particleLifeTime;
 
-	float sizeScale = sizeScaleFromAge(timeRelative);
+	float sizeScale = sizeScaleFromAge(timeRelative) * colorAndSizeScale[styleIndex].w;
 	float alphaScale = alphaScaleFromAge(timeRelative);
 
 	float3 xAxis = camera[0].xyz;

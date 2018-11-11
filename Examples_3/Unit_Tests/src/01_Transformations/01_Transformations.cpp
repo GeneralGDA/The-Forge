@@ -154,12 +154,12 @@ LogManager        gLogManager;
 
 const char*		 pSkyBoxImageFileNames[] =
 {
-	"Skybox_right1.png",
-	"Skybox_left2.png",
-	"Skybox_top3.png",
-	"Skybox_bottom4.png",
-	"Skybox_front5.png",
-	"Skybox_back6.png"
+	"Skybox2_right1.png",
+	"Skybox2_left2.png",
+	"Skybox2_top3.png",
+	"Skybox2_bottom4.png",
+	"Skybox2_front5.png",
+	"Skybox2_back6.png",
 };
 
 const char* pszBases[] =
@@ -203,7 +203,6 @@ private:
 
 	Particles particles;
 	Buffer* particlesPerInstanceData[gImageCount] = { nullptr };
-	int particlesCount[gImageCount] = { 0 };
 
 	void prepareFloorResources()
 	{
@@ -212,7 +211,7 @@ private:
 		floorShaderSource.mStages[1] = { "floor.frag", nullptr, 0, FSR_SrcShaders };
 		addShader(pRenderer, &floorShaderSource, &floorShader);
 
-		const auto floorHalfSize = 300.0f;
+		const auto floorHalfSize = 100.0f;
 
 		const auto FLOATS_PER_FLOOR_VERTEX = 3;
 
@@ -351,8 +350,8 @@ private:
 
 		auto styleCounter = 0;
 
-		particles.colorAndSizeScale[styleCounter++] = vec4{1.0f, 0.0f, 0.0f, 0.1f};
-		particles.colorAndSizeScale[styleCounter++] = vec4{0.0f, 1.0f, 0.0f, 0.5f};
+		particles.colorAndSizeScale[styleCounter++] = vec4{1.0f, 0.0f, 0.0f, 0.5f};
+		particles.colorAndSizeScale[styleCounter++] = vec4{0.0f, 1.0f, 0.0f, 0.8f};
 		particles.colorAndSizeScale[styleCounter++] = vec4{0.0f, 0.0f, 1.0f, 1.0f};
 		
 		ASSERT(styleCounter == _countof(particles.colorAndSizeScale));
@@ -908,6 +907,7 @@ public:
 		emitter.update(deltaTime, viewMat);
 
 		const auto particlesComponentMultiplier = sizeof(float) * emitter.getAliveParticlesCount();
+		ASSERT(emitter.getAliveParticlesCount() <= MAX_PARTICLES_COUNT);
 		::memcpy(particles.positions, emitter.getPositions(), particlesComponentMultiplier * CONST_BUFFER_QUANT_SIZE);
 		::memcpy(particles.timeAndStyle, emitter.getBehaviors(), particlesComponentMultiplier * CONST_BUFFER_QUANT_SIZE);
 		

@@ -14,7 +14,7 @@ namespace
 const auto PARTICLES_PER_SECOND = 25.0f;
 const auto PARTICLE_EMIT_PERIOD = 1.0f / PARTICLES_PER_SECOND;
 
-const vec3 EMITTER_POSITION{0.0f, 0.0f, 0.0f};
+const vec3 EMITTER_POSITION{0.0f, -1.0f, 30.0f};
 const auto EMITTER_EMIT_CUBE_HALF_SIZE = 1.5f;
 
 const vec3 PARTICLES_VELOCITY{0.0f, 4.0f, 0.0f};
@@ -47,6 +47,8 @@ int checkedCast(const size_t value)
 	return static_cast<int>(value);
 }
 
+const auto FLOATS_PER_OUT_ELEMENT = 4;
+
 } // namespace
 
 Emitter::Emitter(const int _maxParticlesCount, const int _stylesCount)
@@ -59,6 +61,9 @@ Emitter::Emitter(const int _maxParticlesCount, const int _stylesCount)
 	ASSERT(0 < stylesCount);
 
 	particles.reserve(_maxParticlesCount);
+
+	outPositions.reserve(_maxParticlesCount * FLOATS_PER_OUT_ELEMENT);
+	outBehaviors.reserve(_maxParticlesCount * FLOATS_PER_OUT_ELEMENT);
 }
 
 void Emitter::emitParticle(const int index, const float startTime)
@@ -105,6 +110,11 @@ void Emitter::removeDeadParticles()
 void Emitter::update(const float timeDeltaSeconds, const mat4& camera)
 {
 	ASSERT(0 <= timeDeltaSeconds);
+
+	if (0 >= timeDeltaSeconds)
+	{
+		return;
+	}
 
 	dead.clear();
 
