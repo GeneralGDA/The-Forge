@@ -35,6 +35,8 @@ private:
 
 public:
 
+	static constexpr auto LIFE_LENGTH_SECONDS = 8.0f;
+
 	Emitter(int maxParticlesCount, int stylesCount);
 
 	void update(float timeDeltaSeconds, const mat4& camera);

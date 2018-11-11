@@ -79,15 +79,21 @@ struct UniformBlock
 namespace
 {
 
-const int PARTICLES_STYLES_COUNT = 2;
-const int MAX_PARTICLES_COUNT = 300;
+const int PARTICLES_STYLES_COUNT = 3;
+const int MAX_PARTICLES_COUNT = 200;
+
+const int CONST_BUFFER_QUANT_SIZE = 4;
 
 } // namespace
 
 struct Particles final
 {
-	float positions[3 * MAX_PARTICLES_COUNT];
-	float timeAndStyle[2 * MAX_PARTICLES_COUNT];
+	float positions[CONST_BUFFER_QUANT_SIZE * MAX_PARTICLES_COUNT];
+	float timeAndStyle[CONST_BUFFER_QUANT_SIZE * MAX_PARTICLES_COUNT];
+
+	vec4 colorAndSizeScale[PARTICLES_STYLES_COUNT];
+	
+	float particlesLifeLength;
 };
 
 const uint32_t	  gImageCount = 3;
@@ -195,7 +201,7 @@ private:
 
 	Emitter emitter;
 
-	Particles particlesPerInstances;
+	Particles particles;
 	Buffer* particlesPerInstanceData[gImageCount] = { nullptr };
 	int particlesCount[gImageCount] = { 0 };
 
@@ -248,7 +254,7 @@ private:
 		const auto FLOATS_PER_PARTICLE_VERTEX = 2;
 		const auto VERTICES_PER_PARTICLE = 6;
 
-		const float PARTICLE_BASE_HALF_SIZE = 10.0f;
+		const float PARTICLE_BASE_HALF_SIZE = 0.5f;
 
 		const float positions[] =
 		{
@@ -332,7 +338,7 @@ private:
 		BufferLoadDesc perInstanceBufferDescription = {};
 		perInstanceBufferDescription.mDesc.mDescriptors = DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		perInstanceBufferDescription.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_CPU_TO_GPU;
-		perInstanceBufferDescription.mDesc.mSize = sizeof(Particles);
+		perInstanceBufferDescription.mDesc.mSize = sizeof(particles);
 		perInstanceBufferDescription.mDesc.mFlags = BUFFER_CREATION_FLAG_PERSISTENT_MAP_BIT;
 		perInstanceBufferDescription.pData = nullptr;
 		for (auto& instance : particlesPerInstanceData)
@@ -340,6 +346,16 @@ private:
 			perInstanceBufferDescription.ppBuffer = &instance;
 			addResource(&perInstanceBufferDescription);
 		}
+
+		particles.particlesLifeLength = Emitter::LIFE_LENGTH_SECONDS;
+
+		auto styleCounter = 0;
+
+		particles.colorAndSizeScale[styleCounter++] = vec4{1.0f, 0.0f, 0.0f, 0.1f};
+		particles.colorAndSizeScale[styleCounter++] = vec4{0.0f, 1.0f, 0.0f, 0.5f};
+		particles.colorAndSizeScale[styleCounter++] = vec4{0.0f, 0.0f, 1.0f, 1.0f};
+		
+		ASSERT(styleCounter == _countof(particles.colorAndSizeScale));
 	}
 
 public:
@@ -892,8 +908,8 @@ public:
 		emitter.update(deltaTime, viewMat);
 
 		const auto particlesComponentMultiplier = sizeof(float) * emitter.getAliveParticlesCount();
-		::memcpy(particlesPerInstances.positions, emitter.getPositions(), particlesComponentMultiplier * 3);
-		::memcpy(particlesPerInstances.timeAndStyle, emitter.getBehaviors(), particlesComponentMultiplier * 2);
+		::memcpy(particles.positions, emitter.getPositions(), particlesComponentMultiplier * CONST_BUFFER_QUANT_SIZE);
+		::memcpy(particles.timeAndStyle, emitter.getBehaviors(), particlesComponentMultiplier * CONST_BUFFER_QUANT_SIZE);
 		
 		viewMat.setTranslation(vec3(0));
 		gUniformDataSky = gUniformData;
@@ -928,7 +944,7 @@ public:
 		BufferUpdateDesc skyboxViewProjCbv = { pSkyboxUniformBuffer[gFrameIndex], &gUniformDataSky };
 		updateResource(&skyboxViewProjCbv);
 
-		BufferUpdateDesc particlesUpdateDescription = { particlesPerInstanceData[gFrameIndex], &particlesPerInstances };
+		BufferUpdateDesc particlesUpdateDescription = { particlesPerInstanceData[gFrameIndex], &particles };
 		updateResource(&particlesUpdateDescription);
 
 		// simply record the screen cleaning command
@@ -1007,20 +1023,25 @@ public:
 			cmdBeginDebugMarker(cmd, 0.5f, 0.5f, 1, "Draw particles");
 
 				cmdBindPipeline(cmd, particlesPipeline);
-				params[0].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
-				params[1].pName = "image";
-				params[1].ppTextures = &particlesTexture;
-				params[2].pName = "depthBuffer";
-				params[2].ppTextures = &pDepthBuffer->pTexture;
-				params[3].pName = "particlesInstances";
-				params[3].ppBuffers = &particlesPerInstanceData[gFrameIndex];
+				int descriptorCount = 0;
+				params[descriptorCount++].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
+				
+				params[descriptorCount].pName = "image";
+				params[descriptorCount++].ppTextures = &particlesTexture;
+				
+				params[descriptorCount].pName = "depthBuffer";
+				params[descriptorCount++].ppTextures = &pDepthBuffer->pTexture;
+				
+				params[descriptorCount].pName = "particlesInstances";
+				params[descriptorCount++].ppBuffers = &particlesPerInstanceData[gFrameIndex];
+				
 				TextureBarrier zReadBarrier[] =
 				{
 					{ pRenderTarget->pTexture, RESOURCE_STATE_RENDER_TARGET },
 					{ pDepthBuffer->pTexture, RESOURCE_STATE_DEPTH_READ | RESOURCE_STATE_SHADER_RESOURCE },
 				};
 				cmdResourceBarrier(cmd, 0, nullptr, _countof(zReadBarrier), zReadBarrier, false);
-				cmdBindDescriptors(cmd, particlesRootSignature, 4, params);
+				cmdBindDescriptors(cmd, particlesRootSignature, descriptorCount, params);
 				cmdBindVertexBuffer(cmd, 1, &particleVertices, nullptr);
 				cmdDrawInstanced(cmd, particleVertexCount, 0, emitter.getAliveParticlesCount(), 0);
 

@@ -6,18 +6,20 @@
 #include "../../../../Common_3/OS/Interfaces/ILogManager.h"
 
 #undef max
+#undef min
 
 namespace
 {
 
-const auto LIFE_LENGTH_SECONDS = 4.0f;
-const auto PARTICLES_PER_SECOND = 10.0f;
+const auto PARTICLES_PER_SECOND = 25.0f;
 const auto PARTICLE_EMIT_PERIOD = 1.0f / PARTICLES_PER_SECOND;
 
-const vec3 EMITTER_POSITION{10.0f, 0.0f, 0.0f};
-const auto EMITTER_EMIT_CUBE_HALF_SIZE = 0.5f;
+const vec3 EMITTER_POSITION{0.0f, 0.0f, 0.0f};
+const auto EMITTER_EMIT_CUBE_HALF_SIZE = 1.5f;
 
 const vec3 PARTICLES_VELOCITY{0.0f, 4.0f, 0.0f};
+
+const auto MAX_TIME_DELTA = 0.4f;
 
 float random()
 {
@@ -65,8 +67,8 @@ void Emitter::emitParticle(const int index, const float startTime)
 
 	auto& particle = particles[index];
 	particle.aliveTime = startTime;
-	particle.styleNumber = rand() / static_cast<float>(stylesCount);
-	particle.position = EMITTER_POSITION + randomShift(EMITTER_EMIT_CUBE_HALF_SIZE);
+	particle.styleNumber = static_cast<float>(rand() % stylesCount);
+	particle.position = EMITTER_POSITION + randomShift(EMITTER_EMIT_CUBE_HALF_SIZE) + PARTICLES_VELOCITY * startTime;
 }
 
 void Emitter::sortParticles(const mat4& camera)
@@ -106,9 +108,15 @@ void Emitter::update(const float timeDeltaSeconds, const mat4& camera)
 
 	dead.clear();
 
-	const auto effectiveTimeDelta = timeDeltaSeconds + timeRest;
+	const auto effectiveTimeDelta = std::min(timeDeltaSeconds, MAX_TIME_DELTA) + timeRest;
 	auto particlesToEmit = static_cast<int>(effectiveTimeDelta * PARTICLES_PER_SECOND);
+
 	timeRest = effectiveTimeDelta - (particlesToEmit * PARTICLE_EMIT_PERIOD);
+
+	if (checkedCast(particles.size()) + particlesToEmit > maxParticlesCount)
+	{
+		particlesToEmit = maxParticlesCount - checkedCast(particles.size());
+	}
 
 	for (auto i = 0u; i < particles.size(); ++i)
 	{
@@ -120,7 +128,7 @@ void Emitter::update(const float timeDeltaSeconds, const mat4& camera)
 		{
 			if (0 < particlesToEmit)
 			{
-				emitParticle(i, particlesToEmit * PARTICLE_EMIT_PERIOD);
+				emitParticle(i, (particlesToEmit - 1) * PARTICLE_EMIT_PERIOD);
 				--particlesToEmit;
 			}
 			else
@@ -143,7 +151,7 @@ void Emitter::update(const float timeDeltaSeconds, const mat4& camera)
 
 		while (0 < particlesToEmit)
 		{
-			emitParticle(checkedCast(emitIndex), particlesToEmit * PARTICLE_EMIT_PERIOD);
+			emitParticle(checkedCast(emitIndex), (particlesToEmit - 1) * PARTICLE_EMIT_PERIOD);
 			++emitIndex;
 			--particlesToEmit;
 		}
@@ -163,9 +171,12 @@ void Emitter::update(const float timeDeltaSeconds, const mat4& camera)
 		outPositions.push_back(particle.position.getX());
 		outPositions.push_back(particle.position.getY());
 		outPositions.push_back(particle.position.getZ());
+		outPositions.push_back(0.0f);
 		
 		outBehaviors.push_back(particle.aliveTime);
 		outBehaviors.push_back(particle.styleNumber);
+		outBehaviors.push_back(0.0f);
+		outBehaviors.push_back(0.0f);
 	}
 }
 

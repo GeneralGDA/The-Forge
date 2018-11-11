@@ -22,6 +22,8 @@ struct VSOutput
 	float4 position : SV_POSITION;
 	float2 texCoord : TEXCOORD;
 	float cameraSpaceDepth : LINEAR_DEPTH;
+	float alphaScale : ALPHA_MULTIPLIER;
+	float3 color : COLOR;
 };
 
 float readDepth(float4 screenPosition)
@@ -50,7 +52,8 @@ float4 main(VSOutput input) : SV_TARGET
 	float alphaMultiplier = softenParticle(input.cameraSpaceDepth, bufferDepth);
 	
 	float4 color = image.Sample(particleImageSampler, input.texCoord);
-	color.a *= alphaMultiplier;
+	color.rgb *= input.color;
+	color.a *= alphaMultiplier * input.alphaScale;
 
 	return color;
 }
