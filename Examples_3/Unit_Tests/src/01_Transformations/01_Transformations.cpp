@@ -76,6 +76,12 @@ struct UniformBlock
 	vec3 mLightColor;
 };
 
+struct ShadowReceiverUniform
+{
+	mat4 shadowMapMvp;
+	mat4 shadowMapCamera;
+};
+
 namespace
 {
 
@@ -189,6 +195,9 @@ private:
 	Buffer* floorVertices = nullptr;
 	Pipeline* floorPipeline = nullptr;
 	RasterizerState* floorRasterizerState = nullptr;
+	Sampler* shadowMapSampler = nullptr;
+	RootSignature* floorRootSignature = nullptr;
+	Buffer* shadowReceiversUniformBuffer[gImageCount] = { nullptr };
 
 	static const int maxParticlesCount = 1;
 	static const int particleVertexCount = 6;
@@ -211,8 +220,9 @@ private:
 	Shader* particlesColorOutShader = nullptr;
 
 	mat4 lightView;
-	mat4 lightMvp;
+	mat4 lightProjection;
 	UniformBlock shadowMapUniforms;
+	ShadowReceiverUniform shadowReceiversUniforms;
 	Buffer* shadowMapUniformsBuffers[gImageCount] = { nullptr };
 	Emitter emitter;
 
@@ -259,6 +269,44 @@ private:
 		RasterizerStateDesc rasterizerStateDescription = {};
 		rasterizerStateDescription.mCullMode = CULL_MODE_FRONT;
 		addRasterizerState(pRenderer, &rasterizerStateDescription, &floorRasterizerState);
+
+		SamplerDesc shadowMapSamplerDescription = {};
+		shadowMapSamplerDescription.mMinFilter = FILTER_LINEAR;
+		shadowMapSamplerDescription.mMagFilter = FILTER_LINEAR;
+		shadowMapSamplerDescription.mMipMapMode = MIPMAP_MODE_LINEAR;
+		shadowMapSamplerDescription.mAddressU = ADDRESS_MODE_CLAMP_TO_EDGE;
+		shadowMapSamplerDescription.mAddressV = ADDRESS_MODE_CLAMP_TO_EDGE;
+		shadowMapSamplerDescription.mAddressW = ADDRESS_MODE_CLAMP_TO_EDGE;
+		shadowMapSamplerDescription.mMipLosBias = 0;
+		shadowMapSamplerDescription.mMaxAnisotropy = 16;
+		shadowMapSamplerDescription.mCompareFunc = CMP_ALWAYS;
+		addSampler(pRenderer, &shadowMapSamplerDescription, &shadowMapSampler);
+
+		{
+			Shader* shadowReceiversShaders[] = { floorShader };
+			const char* shadowReceiversSamplersNames[] = { "shadowMapSampler" };
+			Sampler* shadowReceiversSamplers[] = { shadowMapSampler };
+
+			RootSignatureDesc rootDescription = {};
+			rootDescription.mStaticSamplerCount = _countof(shadowReceiversSamplersNames);
+			rootDescription.ppStaticSamplerNames = shadowReceiversSamplersNames;
+			rootDescription.ppStaticSamplers = shadowReceiversSamplers;
+			rootDescription.mShaderCount = _countof(shadowReceiversShaders);
+			rootDescription.ppShaders = shadowReceiversShaders;
+			addRootSignature(pRenderer, &rootDescription, &floorRootSignature);
+		}
+
+		BufferLoadDesc shadowReceiversUniformsDescription = {};
+		shadowReceiversUniformsDescription.mDesc.mDescriptors = DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		shadowReceiversUniformsDescription.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_CPU_TO_GPU;
+		shadowReceiversUniformsDescription.mDesc.mSize = sizeof(ShadowReceiverUniform);
+		shadowReceiversUniformsDescription.mDesc.mFlags = BUFFER_CREATION_FLAG_PERSISTENT_MAP_BIT;
+		shadowReceiversUniformsDescription.pData = nullptr;
+		for (auto& buffer : shadowReceiversUniformBuffer)
+		{
+			shadowReceiversUniformsDescription.ppBuffer = &buffer;
+			addResource(&shadowReceiversUniformsDescription);
+		}
 	}
 
 	void prepareParticlesResources()
@@ -347,7 +395,6 @@ private:
 		samplerDescription.mCompareFunc = CMP_ALWAYS;
 		addSampler(pRenderer, &samplerDescription, &particleImageSampler);
 
-
 		{
 			Shader* particlesShaders[] = { particlesShader, particlesDepthOutShader, particlesColorOutShader };
 			const char* staticSamplersNames[] = { "particleImageSampler" };
@@ -402,16 +449,16 @@ private:
 		depthStateDescription.mDepthFunc = CMP_ALWAYS;
 		addDepthState(pRenderer, &disableAllDepthStateDescription, &depthStencilStateDisableAll);
 
-		BufferLoadDesc shadowMapUniformsrDescription = {};
-		shadowMapUniformsrDescription.mDesc.mDescriptors = DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		shadowMapUniformsrDescription.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_CPU_TO_GPU;
-		shadowMapUniformsrDescription.mDesc.mSize = sizeof(UniformBlock);
-		shadowMapUniformsrDescription.mDesc.mFlags = BUFFER_CREATION_FLAG_PERSISTENT_MAP_BIT;
-		shadowMapUniformsrDescription.pData = nullptr;
+		BufferLoadDesc shadowMapUniformsDescription = {};
+		shadowMapUniformsDescription.mDesc.mDescriptors = DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		shadowMapUniformsDescription.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_CPU_TO_GPU;
+		shadowMapUniformsDescription.mDesc.mSize = sizeof(UniformBlock);
+		shadowMapUniformsDescription.mDesc.mFlags = BUFFER_CREATION_FLAG_PERSISTENT_MAP_BIT;
+		shadowMapUniformsDescription.pData = nullptr;
 		for (auto& buffer : shadowMapUniformsBuffers)
 		{
-			shadowMapUniformsrDescription.ppBuffer = &buffer;
-			addResource(&shadowMapUniformsrDescription);
+			shadowMapUniformsDescription.ppBuffer = &buffer;
+			addResource(&shadowMapUniformsDescription);
 		}
 	}
 
@@ -421,8 +468,15 @@ public:
 		:
 		emitter(MAX_PARTICLES_COUNT, PARTICLES_STYLES_COUNT)
 	{
-		lightView = mat4::lookAt(Point3{ 50, 50, 50 }, Point3{ 0, 0, 0 }, Vector3{ 0, 1, 0 });
-		lightMvp = mat4::perspective(PI / 2.0f, SHADOW_MAP_HEIGHT / static_cast<float>(SHADOW_MAP_WIDTH), 0.1f, 100.0f) * lightView;
+		const auto xRadians = degToRad(-40.0f);
+		const auto yRadians = degToRad(180.0f);
+		const auto lightPosition = vec4{ 30.0f, -66.0f, -100.0f, 1.0f };
+
+		lightView = mat4::rotationXY(xRadians, yRadians);
+		const vec4 translation = lightView * lightPosition;
+		lightView.setTranslation(translation.getXYZ());
+		
+		lightProjection = mat4::perspective(PI / 2.0f, SHADOW_MAP_HEIGHT / static_cast<float>(SHADOW_MAP_WIDTH), 0.1f, 100.0f);
 	}
 
 	bool Init()
@@ -491,7 +545,7 @@ public:
 		};
 		addSampler(pRenderer, &samplerDesc, &pSamplerSkyBox);
 
-		Shader* shaders[] = { pSphereShader, pSkyBoxDrawShader, floorShader };
+		Shader* shaders[] = { pSphereShader, pSkyBoxDrawShader };
 		const char* pStaticSamplersNames[] = { "uSampler0" };
 		Sampler* staticSamplers[] = { pSamplerSkyBox };
 		RootSignatureDesc rootDesc = {};
@@ -753,6 +807,9 @@ public:
 			removeShader(pRenderer, floorShader);
 			removeResource(floorVertices);
 			removeRasterizerState(floorRasterizerState);
+			
+			removeSampler(pRenderer, shadowMapSampler);
+			removeRootSignature(pRenderer, floorRootSignature);
 
 			removeResource(particleVertices);
 			removeRasterizerState(particlesRasterizerState);
@@ -777,6 +834,16 @@ public:
 			for (auto particleInstancesData : particlesPerInstanceDataShadowMap)
 			{
 				removeResource(particleInstancesData);
+			}
+
+			for (auto buffer : shadowMapUniformsBuffers)
+			{
+				removeResource(buffer);
+			}
+
+			for (auto buffer : shadowReceiversUniformBuffer)
+			{
+				removeResource(buffer);
 			}
 
 			removeDepthState(depthStencilStateDisableAll);
@@ -891,6 +958,7 @@ public:
 		vertexLayout.mAttribs[0].mOffset = 0;
 		pipelineSettings.pShaderProgram = floorShader;
 		pipelineSettings.pRasterizerState = floorRasterizerState;
+		pipelineSettings.pRootSignature = floorRootSignature;
 		addPipeline(pRenderer, &pipelineSettings, &floorPipeline);
 
 		// particle pipeline
@@ -951,6 +1019,7 @@ public:
 		shadowMapColorPipelineSettings.pRasterizerState = particlesRasterizerState;
 		shadowMapColorPipelineSettings.pShaderProgram = particlesColorOutShader;
 		shadowMapColorPipelineSettings.pVertexLayout = &particleVertexLayout;
+		shadowMapColorPipelineSettings.pBlendState = particlesBlendState;
 		addPipeline(pRenderer, &shadowMapColorPipelineSettings, &shadowPassColorPipeline);
 
 		return true;
@@ -1055,7 +1124,10 @@ public:
 		::memcpy(particlesShadowMap.timeAndStyle, emitter.getBehaviors(), particlesComponentMultiplier * CONST_BUFFER_QUANT_SIZE);
 
 		shadowMapUniforms.mCamera = lightView;
-		shadowMapUniforms.mProjectView = lightMvp;
+		shadowMapUniforms.mProjectView = lightProjection * lightView;
+
+		shadowReceiversUniforms.shadowMapCamera = lightView;
+		shadowReceiversUniforms.shadowMapMvp = lightProjection * lightView;
 
 		viewMat.setTranslation(vec3(0));
 		gUniformDataSky = gUniformData;
@@ -1094,10 +1166,13 @@ public:
 		updateResource(&particlesUpdateDescription);
 
 		BufferUpdateDesc particlesShadowMapUpdateDescription = { particlesPerInstanceDataShadowMap[gFrameIndex], &particlesShadowMap };
-		updateResource(&particlesUpdateDescription);
+		updateResource(&particlesShadowMapUpdateDescription);
 
 		BufferUpdateDesc particlesShadowUniformsDescription = { shadowMapUniformsBuffers[gFrameIndex], &shadowMapUniforms };
 		updateResource(&particlesShadowUniformsDescription);
+
+		BufferUpdateDesc shadowReceiversUniformsDescription = { shadowReceiversUniformBuffer[gFrameIndex], &shadowReceiversUniforms };
+		updateResource(&shadowReceiversUniformsDescription);
 
 		// simply record the screen cleaning command
 		LoadActionsDesc loadActions = {};
@@ -1125,6 +1200,9 @@ public:
 
 		cmdBeginDebugMarker(cmd, 0.5f, 0.5f, 1, "Draw particles shadow map");
 		{
+			TextureBarrier shadowMapBarrier[] = { { shadowMap->pTexture, RESOURCE_STATE_RENDER_TARGET } };
+			cmdResourceBarrier(cmd, 0, nullptr, _countof(shadowMapBarrier), shadowMapBarrier, false);
+
 			cmdBindRenderTargets(cmd, 1, &shadowMap, nullptr, &shadowMapLoadActions, nullptr, nullptr, -1, -1);
 			cmdSetViewport(cmd, 0.0f, 0.0f, static_cast<float>(shadowMap->mDesc.mWidth), static_cast<float>(shadowMap->mDesc.mHeight), 0.0f, 1.0f);
 			cmdSetScissor(cmd, 0, 0, shadowMap->mDesc.mWidth, shadowMap->mDesc.mHeight);
@@ -1132,14 +1210,12 @@ public:
 			DescriptorData descriptors[MAX_DESCRIPTORS_COUNT] = {};
 			int descriptorCount = 0;
 			descriptors[descriptorCount].pName = "uniformBlock";
-			descriptors[descriptorCount++].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
+			descriptors[descriptorCount++].ppBuffers = &shadowReceiversUniformBuffer[gFrameIndex];
 			descriptors[descriptorCount].pName = "particlesInstances";
-			descriptors[descriptorCount++].ppBuffers = &particlesPerInstanceData[gFrameIndex];
+			descriptors[descriptorCount++].ppBuffers = &particlesPerInstanceDataShadowMap[gFrameIndex];
 
 			cmdBindPipeline(cmd, shadowPassDephtPipeline);
-			TextureBarrier shadowMapBarrier[] = { { shadowMap->pTexture, RESOURCE_STATE_RENDER_TARGET } };
-			cmdResourceBarrier(cmd, 0, nullptr, _countof(shadowMapBarrier), shadowMapBarrier, false);
-
+			
 			cmdBindDescriptors(cmd, particlesRootSignature, descriptorCount, descriptors);
 			cmdBindVertexBuffer(cmd, 1, &particleVertices, nullptr);
 			cmdDrawInstanced(cmd, particleVertexCount, 0, emitter.getAliveParticlesCount(), 0);
@@ -1148,6 +1224,9 @@ public:
 
 		cmdBeginDebugMarker(cmd, 0.5f, 0.5f, 1, "Draw particles shadow map color filter");
 		{
+			TextureBarrier shadowMapColorFilterBarrier[] = { { shadowMapColorFilter->pTexture, RESOURCE_STATE_RENDER_TARGET } };
+			cmdResourceBarrier(cmd, 0, nullptr, _countof(shadowMapColorFilterBarrier), shadowMapColorFilterBarrier, false);
+
 			cmdBindRenderTargets(cmd, 1, &shadowMapColorFilter, nullptr, &shadowMapLoadActions, nullptr, nullptr, -1, -1);
 			cmdSetViewport(cmd, 0.0f, 0.0f, static_cast<float>(shadowMapColorFilter->mDesc.mWidth), static_cast<float>(shadowMapColorFilter->mDesc.mHeight), 0.0f, 1.0f);
 			cmdSetScissor(cmd, 0, 0, shadowMapColorFilter->mDesc.mWidth, shadowMapColorFilter->mDesc.mHeight);
@@ -1155,15 +1234,13 @@ public:
 			DescriptorData descriptors[MAX_DESCRIPTORS_COUNT] = {};
 			int descriptorCount = 0;
 			descriptors[descriptorCount].pName = "uniformBlock";
-			descriptors[descriptorCount++].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
+			descriptors[descriptorCount++].ppBuffers = &shadowReceiversUniformBuffer[gFrameIndex];
 			descriptors[descriptorCount].pName = "particlesInstances";
-			descriptors[descriptorCount++].ppBuffers = &particlesPerInstanceData[gFrameIndex];
+			descriptors[descriptorCount++].ppBuffers = &particlesPerInstanceDataShadowMap[gFrameIndex];
 			descriptors[descriptorCount].pName = "image";
 			descriptors[descriptorCount++].ppTextures = &particlesTexture;
 
 			cmdBindPipeline(cmd, shadowPassColorPipeline);
-			TextureBarrier shadowMapColorFilterBarrier[] = { { shadowMapColorFilter->pTexture, RESOURCE_STATE_RENDER_TARGET } };
-			cmdResourceBarrier(cmd, 0, nullptr, _countof(shadowMapColorFilterBarrier), shadowMapColorFilterBarrier, false);
 
 			cmdBindDescriptors(cmd, particlesRootSignature, descriptorCount, descriptors);
 			cmdBindVertexBuffer(cmd, 1, &particleVertices, nullptr);
@@ -1218,16 +1295,41 @@ public:
 		{
 			//
 
+			{
+			DescriptorData floorDrawParameters[MAX_DESCRIPTORS_COUNT] = {};
+			
+			int descriptorCount = 0;
+
+			floorDrawParameters[descriptorCount].pName = "uniformBlock";
+			floorDrawParameters[descriptorCount++].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
+			
+			floorDrawParameters[descriptorCount].pName = "shadowReceiverUniforms";
+			floorDrawParameters[descriptorCount++].ppBuffers = &shadowReceiversUniformBuffer[gFrameIndex];
+
+			floorDrawParameters[descriptorCount].pName = "shadowMapDepth";
+			floorDrawParameters[descriptorCount++].ppTextures = &shadowMap->pTexture;
+
+			floorDrawParameters[descriptorCount].pName = "shadowMapColor";
+			floorDrawParameters[descriptorCount++].ppTextures = &shadowMapColorFilter->pTexture;
+
 			cmdBeginDebugMarker(cmd, 1, 1, 1, "Draw floor");
 
+				TextureBarrier shadowMapBarrier[] =
+				{
+					{ shadowMap->pTexture, RESOURCE_STATE_SHADER_RESOURCE },
+					{ shadowMapColorFilter->pTexture, RESOURCE_STATE_SHADER_RESOURCE },
+				};
+				cmdResourceBarrier(cmd, 0, nullptr, _countof(shadowMapBarrier), shadowMapBarrier, false);
+
 				cmdBindPipeline(cmd, floorPipeline);
-				params[0].ppBuffers = &pProjViewUniformBuffer[gFrameIndex];
-				cmdBindDescriptors(cmd, pRootSignature, 1, params);
+				
+				cmdBindDescriptors(cmd, floorRootSignature, descriptorCount, floorDrawParameters);
 				cmdBindVertexBuffer(cmd, 1, &floorVertices, nullptr);
+
 				cmdDraw(cmd, FLOOR_VERTEX_COUNT, 0);
 
 			cmdEndDebugMarker(cmd);
-
+			}
 			//
 
 			cmdBeginDebugMarker(cmd, 0.5f, 0.5f, 1, "Draw particles");

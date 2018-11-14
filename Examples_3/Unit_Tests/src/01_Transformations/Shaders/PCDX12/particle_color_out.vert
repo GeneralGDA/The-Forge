@@ -4,13 +4,6 @@ cbuffer uniformBlock : register(b0)
 {
     float4x4 mvp;
 	float4x4 camera;
-	float4 zProjection; // x <- scale, y <- bias
-    float4x4 toWorld[MAX_PLANETS];
-    float4 color[MAX_PLANETS];
-
-    // Point Light Information
-    float3 lightPosition;
-    float3 lightColor;
 };
 
 #define MAX_PARTICLES_COUNT 200

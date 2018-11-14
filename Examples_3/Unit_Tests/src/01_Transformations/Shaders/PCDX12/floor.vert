@@ -13,8 +13,10 @@ cbuffer uniformBlock : register(b0)
     float3 lightColor;
 };
 
-struct VSOutput {
+struct VSOutput 
+{
 	float4 Position : SV_POSITION;
+	float4 worldSpacePosition: POSITION;
 };
 
 VSOutput main(float4 Position : POSITION)
@@ -22,6 +24,7 @@ VSOutput main(float4 Position : POSITION)
 	VSOutput result;
  
     result.Position = mul(mvp,Position);
-    
+    result.worldSpacePosition = Position;
+
 	return result;
 }
