@@ -75,7 +75,8 @@ namespace PlatformEvents
 	extern void onWindowResize(const WindowResizeEventData* pData);
 }
 
-static LPPOINT lastCursorPoint = &POINT();
+static POINT cursorBuffer;
+static LPPOINT lastCursorPoint = &cursorBuffer;
 static bool captureMouse(bool shouldCapture)
 {
 	if (shouldCapture != isCaptured)
