@@ -211,13 +211,12 @@ private:
 	Sampler* particleImageSampler = nullptr;
 	RootSignature* particlesRootSignature = nullptr;
 
-	RenderTarget* shadowMap = nullptr;
-	RenderTarget* shadowMapColorFilter = nullptr;
-	Pipeline* shadowPassDephtPipeline = nullptr;
-	Pipeline* shadowPassColorPipeline = nullptr;
+	static const int SHADOW_MAP_BUFFERS_COUNT = 2;
+	RenderTarget* shadowMapDepth = nullptr;
+	RenderTarget* shadowMapColor = nullptr;
+	Pipeline* shadowMapPassPipeline = nullptr;
 	DepthState* depthStencilStateDisableAll = nullptr;
-	Shader* particlesDepthOutShader = nullptr;
-	Shader* particlesColorOutShader = nullptr;
+	Shader* particlesShadowShader = nullptr;
 
 	mat4 lightView;
 	mat4 lightProjection;
@@ -316,15 +315,10 @@ private:
 		particlesShaderSource.mStages[1] = { "particle.frag", nullptr, 0, FSR_SrcShaders };
 		addShader(pRenderer, &particlesShaderSource, &particlesShader);
 
-		ShaderLoadDesc particlesShadowDepthOutShaderSource = {};
-		particlesShadowDepthOutShaderSource.mStages[0] = { "particle_depth_out.vert", nullptr, 0, FSR_SrcShaders };
-		particlesShadowDepthOutShaderSource.mStages[1] = { "particle_depth_out.frag", nullptr, 0, FSR_SrcShaders };
-		addShader(pRenderer, &particlesShadowDepthOutShaderSource, &particlesDepthOutShader);
-
 		ShaderLoadDesc particlesShadowDepthColorShaderSource = {};
-		particlesShadowDepthColorShaderSource.mStages[0] = { "particle_color_out.vert", nullptr, 0, FSR_SrcShaders };
-		particlesShadowDepthColorShaderSource.mStages[1] = { "particle_color_out.frag", nullptr, 0, FSR_SrcShaders };
-		addShader(pRenderer, &particlesShadowDepthColorShaderSource, &particlesColorOutShader);
+		particlesShadowDepthColorShaderSource.mStages[0] = { "particle_shadow_map.vert", nullptr, 0, FSR_SrcShaders };
+		particlesShadowDepthColorShaderSource.mStages[1] = { "particle_shadow_map.frag", nullptr, 0, FSR_SrcShaders };
+		addShader(pRenderer, &particlesShadowDepthColorShaderSource, &particlesShadowShader);
 
 		const auto FLOATS_PER_PARTICLE_VERTEX = 2;
 		const auto VERTICES_PER_PARTICLE = 6;
@@ -362,7 +356,8 @@ private:
 		BlendStateDesc blendStateDescription = {};
 		blendStateDescription.mIndependentBlend = false;
 		blendStateDescription.mAlphaToCoverage = false;
-		blendStateDescription.mRenderTargetMask = BLEND_STATE_TARGET_0;
+		blendStateDescription.mRenderTargetMask = BLEND_STATE_TARGET_0 | BLEND_STATE_TARGET_1;
+		
 		blendStateDescription.mMasks[0] = ALL;
 		blendStateDescription.mBlendAlphaModes[0] = BM_ADD;
 		blendStateDescription.mBlendModes[0] = BM_ADD;
@@ -370,6 +365,15 @@ private:
 		blendStateDescription.mDstFactors[0] = BC_ONE_MINUS_SRC_ALPHA;
 		blendStateDescription.mSrcAlphaFactors[0] = BC_ONE;
 		blendStateDescription.mSrcFactors[0] = BC_SRC_ALPHA;
+		
+		blendStateDescription.mMasks[1] = ALL;
+		blendStateDescription.mBlendAlphaModes[1] = BM_ADD;
+		blendStateDescription.mBlendModes[1] = BM_ADD;
+		blendStateDescription.mDstAlphaFactors[1] = BC_ZERO;
+		blendStateDescription.mDstFactors[1] = BC_ZERO;
+		blendStateDescription.mSrcAlphaFactors[1] = BC_ONE;
+		blendStateDescription.mSrcFactors[1] = BC_ONE;
+		
 		addBlendState(pRenderer, &blendStateDescription, &particlesBlendState);
 
 		TextureLoadDesc textureDescription = {};
@@ -396,7 +400,7 @@ private:
 		addSampler(pRenderer, &samplerDescription, &particleImageSampler);
 
 		{
-			Shader* particlesShaders[] = { particlesShader, particlesDepthOutShader, particlesColorOutShader };
+			Shader* particlesShaders[] = { particlesShader, particlesShadowShader };
 			const char* staticSamplersNames[] = { "particleImageSampler" };
 			Sampler* staticSamplers[] = { particleImageSampler };
 
@@ -830,9 +834,7 @@ public:
 			removeShader(pRenderer, particlesShader);
 			removeRootSignature(pRenderer, particlesRootSignature);
 
-			removeShader(pRenderer, particlesDepthOutShader);
-			
-			removeShader(pRenderer, particlesColorOutShader);
+			removeShader(pRenderer, particlesShadowShader);
 
 			for (auto particleInstancesData : particlesPerInstanceData)
 			{
@@ -907,33 +909,33 @@ public:
 
 		const ClearValue maxClearValue = { 1.0f, 1.0f, 1.0f, 1.0f };
 
-		RenderTargetDesc shadowMapDescription = {};
-		shadowMapDescription.mArraySize = 1;
-		shadowMapDescription.mClearValue = maxClearValue;
-		shadowMapDescription.mDepth = 1;
-		shadowMapDescription.mMipLevels = 1;
-		shadowMapDescription.mFlags = TEXTURE_CREATION_FLAG_NONE;
-		shadowMapDescription.mFormat = ImageFormat::R32F;
-		shadowMapDescription.mWidth = SHADOW_MAP_WIDTH;
-		shadowMapDescription.mHeight = SHADOW_MAP_HEIGHT;
-		shadowMapDescription.mSampleCount = SAMPLE_COUNT_1;
-		shadowMapDescription.mSampleQuality = 0;
-		shadowMapDescription.pDebugName = L"Shadow Map Render Target";
+		RenderTargetDesc shadowMapDepthBufferDescription = {};
+		shadowMapDepthBufferDescription.mArraySize = 1;
+		shadowMapDepthBufferDescription.mClearValue = maxClearValue;
+		shadowMapDepthBufferDescription.mDepth = 1;
+		shadowMapDepthBufferDescription.mMipLevels = 1;
+		shadowMapDepthBufferDescription.mFlags = TEXTURE_CREATION_FLAG_NONE;
+		shadowMapDepthBufferDescription.mFormat = ImageFormat::R32F;
+		shadowMapDepthBufferDescription.mWidth = SHADOW_MAP_WIDTH;
+		shadowMapDepthBufferDescription.mHeight = SHADOW_MAP_HEIGHT;
+		shadowMapDepthBufferDescription.mSampleCount = SAMPLE_COUNT_1;
+		shadowMapDepthBufferDescription.mSampleQuality = 0;
+		shadowMapDepthBufferDescription.pDebugName = L"Shadow Map Depth Render Target";
 
-		addRenderTarget(pRenderer, &shadowMapDescription, &shadowMap);
+		addRenderTarget(pRenderer, &shadowMapDepthBufferDescription, &shadowMapDepth);
 
-		RenderTargetDesc shadowMapColorFilterDescription = {};
-		shadowMapColorFilterDescription.mArraySize = 1;
-		shadowMapColorFilterDescription.mClearValue = maxClearValue;
-		shadowMapColorFilterDescription.mDepth = 1;
-		shadowMapColorFilterDescription.mFormat = ImageFormat::RGBA8;
-		shadowMapColorFilterDescription.mWidth = shadowMapDescription.mWidth;
-		shadowMapColorFilterDescription.mHeight = shadowMapDescription.mHeight;
-		shadowMapColorFilterDescription.mSampleCount = SAMPLE_COUNT_1;
-		shadowMapColorFilterDescription.mSampleQuality = 0;
-		shadowMapColorFilterDescription.pDebugName = L"Shadow Map Color Filter Render Target";
+		RenderTargetDesc shadowMapColorBufferDescription = {};
+		shadowMapColorBufferDescription.mArraySize = 1;
+		shadowMapColorBufferDescription.mClearValue = maxClearValue;
+		shadowMapColorBufferDescription.mDepth = 1;
+		shadowMapColorBufferDescription.mFormat = ImageFormat::RGBA8;
+		shadowMapColorBufferDescription.mWidth = shadowMapDepthBufferDescription.mWidth;
+		shadowMapColorBufferDescription.mHeight = shadowMapDepthBufferDescription.mHeight;
+		shadowMapColorBufferDescription.mSampleCount = SAMPLE_COUNT_1;
+		shadowMapColorBufferDescription.mSampleQuality = 0;
+		shadowMapColorBufferDescription.pDebugName = L"Shadow Map Color Render Target";
 
-		addRenderTarget(pRenderer, &shadowMapColorFilterDescription, &shadowMapColorFilter);
+		addRenderTarget(pRenderer, &shadowMapColorBufferDescription, &shadowMapColor);
 
 		//layout and pipeline for sphere draw
 		VertexLayout vertexLayout = {};
@@ -1002,41 +1004,32 @@ public:
 		vertexLayout.mAttribs[0].mLocation = 0;
 		vertexLayout.mAttribs[0].mOffset = 0;
 		pipelineSettings.pBlendState = nullptr;
-		pipelineSettings.pDepthState = NULL;
+		pipelineSettings.pDepthState = nullptr;
 		pipelineSettings.pRasterizerState = pSkyboxRast;
 		pipelineSettings.pShaderProgram = pSkyBoxDrawShader;
 		pipelineSettings.pRootSignature = pRootSignature;
 		pipelineSettings.pVertexLayout = &vertexLayout;
 		addPipeline(pRenderer, &pipelineSettings, &pSkyBoxDrawPipeline);
 
-		GraphicsPipelineDesc shadowMapDepthPipelineSettings = pipelineSettings;
-		shadowMapDepthPipelineSettings.mRenderTargetCount = 1;
-		shadowMapDepthPipelineSettings.pDepthState = depthStencilStateDisableAll;
-		shadowMapDepthPipelineSettings.mDepthStencilFormat = ImageFormat::NONE;
-		shadowMapDepthPipelineSettings.pColorFormats = &shadowMap->mDesc.mFormat;
-		shadowMapDepthPipelineSettings.pSrgbValues = &shadowMap->mDesc.mSrgb;
-		shadowMapDepthPipelineSettings.mSampleCount = shadowMap->mDesc.mSampleCount;
-		shadowMapDepthPipelineSettings.mSampleQuality = shadowMap->mDesc.mSampleQuality;
-		shadowMapDepthPipelineSettings.pRootSignature = particlesRootSignature;
-		shadowMapDepthPipelineSettings.pRasterizerState = particlesRasterizerState;
-		shadowMapDepthPipelineSettings.pShaderProgram = particlesDepthOutShader;
-		shadowMapDepthPipelineSettings.pVertexLayout = &particleVertexLayout;
-		addPipeline(pRenderer, &shadowMapDepthPipelineSettings, &shadowPassDephtPipeline);
+		GraphicsPipelineDesc shadowMapPipelineSettings = pipelineSettings;
+		shadowMapPipelineSettings.mRenderTargetCount = SHADOW_MAP_BUFFERS_COUNT;
+		shadowMapPipelineSettings.pDepthState = depthStencilStateDisableAll;
+		shadowMapPipelineSettings.mDepthStencilFormat = ImageFormat::NONE;
+		
+		ImageFormat::Enum shadowMapColorFormats[SHADOW_MAP_BUFFERS_COUNT] = { shadowMapColor->mDesc.mFormat, shadowMapDepth->mDesc.mFormat };
+		shadowMapPipelineSettings.pColorFormats = shadowMapColorFormats;
 
-		GraphicsPipelineDesc shadowMapColorPipelineSettings = pipelineSettings;
-		shadowMapColorPipelineSettings.mRenderTargetCount = 1;
-		shadowMapColorPipelineSettings.pDepthState = depthStencilStateDisableAll;
-		shadowMapColorPipelineSettings.mDepthStencilFormat = ImageFormat::NONE;
-		shadowMapColorPipelineSettings.pColorFormats = &shadowMapColorFilter->mDesc.mFormat;
-		shadowMapColorPipelineSettings.pSrgbValues = &shadowMapColorFilter->mDesc.mSrgb;
-		shadowMapColorPipelineSettings.mSampleCount = shadowMapColorFilter->mDesc.mSampleCount;
-		shadowMapColorPipelineSettings.mSampleQuality = shadowMapColorFilter->mDesc.mSampleQuality;
-		shadowMapColorPipelineSettings.pRootSignature = particlesRootSignature;
-		shadowMapColorPipelineSettings.pRasterizerState = particlesRasterizerState;
-		shadowMapColorPipelineSettings.pShaderProgram = particlesColorOutShader;
-		shadowMapColorPipelineSettings.pVertexLayout = &particleVertexLayout;
-		shadowMapColorPipelineSettings.pBlendState = particlesBlendState;
-		addPipeline(pRenderer, &shadowMapColorPipelineSettings, &shadowPassColorPipeline);
+		bool shadowMapSrgbValues[SHADOW_MAP_BUFFERS_COUNT] = { shadowMapColor->mDesc.mSrgb, shadowMapDepth->mDesc.mSrgb };
+		shadowMapPipelineSettings.pSrgbValues = shadowMapSrgbValues;
+		
+		shadowMapPipelineSettings.mSampleCount = SAMPLE_COUNT_1;
+		shadowMapPipelineSettings.mSampleQuality = 0;
+		shadowMapPipelineSettings.pRootSignature = particlesRootSignature;
+		shadowMapPipelineSettings.pRasterizerState = particlesRasterizerState;
+		shadowMapPipelineSettings.pShaderProgram = particlesShadowShader;
+		shadowMapPipelineSettings.pVertexLayout = &particleVertexLayout;
+		shadowMapPipelineSettings.pBlendState = particlesBlendState;
+		addPipeline(pRenderer, &shadowMapPipelineSettings, &shadowMapPassPipeline);
 
 		return true;
 	}
@@ -1057,11 +1050,10 @@ public:
 		removePipeline(pRenderer, floorPipeline);
 		removePipeline(pRenderer, particlesPipeline);
 		
-		removePipeline(pRenderer, shadowPassColorPipeline);
-		removePipeline(pRenderer, shadowPassDephtPipeline);
+		removePipeline(pRenderer, shadowMapPassPipeline);
 
-		removeRenderTarget(pRenderer, shadowMap);
-		removeRenderTarget(pRenderer, shadowMapColorFilter);
+		removeRenderTarget(pRenderer, shadowMapDepth);
+		removeRenderTarget(pRenderer, shadowMapColor);
 
 		removeSwapChain(pRenderer, pSwapChain);
 		removeRenderTarget(pRenderer, pDepthBuffer);
@@ -1199,52 +1191,36 @@ public:
 		loadActions.mLoadActionDepth = LOAD_ACTION_CLEAR;
 		loadActions.mClearDepth.depth = 1.0f;
 		loadActions.mClearDepth.stencil = 0;
-
-		LoadActionsDesc shadowMapLoadActions = {};
-		shadowMapLoadActions.mLoadActionsColor[0] = LOAD_ACTION_CLEAR;
-		shadowMapLoadActions.mClearColorValues[0].r = 1.0f;
-		shadowMapLoadActions.mClearColorValues[0].g = 1.0f;
-		shadowMapLoadActions.mClearColorValues[0].b = 1.0f;
-		shadowMapLoadActions.mClearColorValues[0].a = 1.0f;
-		shadowMapLoadActions.mLoadActionDepth = LOAD_ACTION_DONTCARE;
 		
 		Cmd* cmd = ppCmds[gFrameIndex];
 		beginCmd(cmd);
 
 		const int MAX_DESCRIPTORS_COUNT = 8;
 
-		cmdBeginDebugMarker(cmd, 0.5f, 0.5f, 1, "Draw particles shadow map");
+		cmdBeginDebugMarker(cmd, 0.5f, 0.5f, 0, "Draw particles shadow map");
 		{
-			TextureBarrier shadowMapBarrier[] = { { shadowMap->pTexture, RESOURCE_STATE_RENDER_TARGET } };
-			cmdResourceBarrier(cmd, 0, nullptr, _countof(shadowMapBarrier), shadowMapBarrier, false);
+			LoadActionsDesc shadowMapLoadActions = {};
+			for (int i = 0; i < SHADOW_MAP_BUFFERS_COUNT; ++i)
+			{
+				shadowMapLoadActions.mLoadActionsColor[i] = LOAD_ACTION_CLEAR;
+				shadowMapLoadActions.mClearColorValues[i].r = 1.0f;
+				shadowMapLoadActions.mClearColorValues[i].g = 1.0f;
+				shadowMapLoadActions.mClearColorValues[i].b = 1.0f;
+				shadowMapLoadActions.mClearColorValues[i].a = 1.0f;
+			}
+			shadowMapLoadActions.mLoadActionDepth = LOAD_ACTION_DONTCARE;
 
-			cmdBindRenderTargets(cmd, 1, &shadowMap, nullptr, &shadowMapLoadActions, nullptr, nullptr, -1, -1);
-			cmdSetViewport(cmd, 0.0f, 0.0f, static_cast<float>(shadowMap->mDesc.mWidth), static_cast<float>(shadowMap->mDesc.mHeight), 0.0f, 1.0f);
-			cmdSetScissor(cmd, 0, 0, shadowMap->mDesc.mWidth, shadowMap->mDesc.mHeight);
+			TextureBarrier barrier[SHADOW_MAP_BUFFERS_COUNT] =
+			{
+				{ shadowMapDepth->pTexture, RESOURCE_STATE_RENDER_TARGET }, 
+				{ shadowMapColor->pTexture, RESOURCE_STATE_RENDER_TARGET } 
+			};
+			cmdResourceBarrier(cmd, 0, nullptr, _countof(barrier), barrier, false);
 
-			DescriptorData descriptors[MAX_DESCRIPTORS_COUNT] = {};
-			int descriptorCount = 0;
-			descriptors[descriptorCount].pName = "uniformBlock";
-			descriptors[descriptorCount++].ppBuffers = &shadowReceiversUniformBuffer[gFrameIndex];
-			descriptors[descriptorCount].pName = "particlesInstances";
-			descriptors[descriptorCount++].ppBuffers = &particlesPerInstanceDataShadowMap[gFrameIndex];
-
-			cmdBindPipeline(cmd, shadowPassDephtPipeline);
-			
-			cmdBindDescriptors(cmd, particlesRootSignature, descriptorCount, descriptors);
-			cmdBindVertexBuffer(cmd, 1, &particleVertices, nullptr);
-			cmdDrawInstanced(cmd, particleVertexCount, 0, emitter.getAliveParticlesCount(), 0);
-		}
-		cmdEndDebugMarker(cmd);
-
-		cmdBeginDebugMarker(cmd, 0.5f, 0.5f, 1, "Draw particles shadow map color filter");
-		{
-			TextureBarrier shadowMapColorFilterBarrier[] = { { shadowMapColorFilter->pTexture, RESOURCE_STATE_RENDER_TARGET } };
-			cmdResourceBarrier(cmd, 0, nullptr, _countof(shadowMapColorFilterBarrier), shadowMapColorFilterBarrier, false);
-
-			cmdBindRenderTargets(cmd, 1, &shadowMapColorFilter, nullptr, &shadowMapLoadActions, nullptr, nullptr, -1, -1);
-			cmdSetViewport(cmd, 0.0f, 0.0f, static_cast<float>(shadowMapColorFilter->mDesc.mWidth), static_cast<float>(shadowMapColorFilter->mDesc.mHeight), 0.0f, 1.0f);
-			cmdSetScissor(cmd, 0, 0, shadowMapColorFilter->mDesc.mWidth, shadowMapColorFilter->mDesc.mHeight);
+			RenderTarget* renderTargets[SHADOW_MAP_BUFFERS_COUNT] = { shadowMapColor, shadowMapDepth, };
+			cmdBindRenderTargets(cmd, _countof(renderTargets), renderTargets, nullptr, &shadowMapLoadActions, nullptr, nullptr, -1, -1);
+			cmdSetViewport(cmd, 0.0f, 0.0f, static_cast<float>(shadowMapDepth->mDesc.mWidth), static_cast<float>(shadowMapDepth->mDesc.mHeight), 0.0f, 1.0f);
+			cmdSetScissor(cmd, 0, 0, shadowMapDepth->mDesc.mWidth, shadowMapDepth->mDesc.mHeight);
 
 			DescriptorData descriptors[MAX_DESCRIPTORS_COUNT] = {};
 			int descriptorCount = 0;
@@ -1255,14 +1231,14 @@ public:
 			descriptors[descriptorCount].pName = "image";
 			descriptors[descriptorCount++].ppTextures = &particlesTexture;
 
-			cmdBindPipeline(cmd, shadowPassColorPipeline);
-
+			cmdBindPipeline(cmd, shadowMapPassPipeline);
+			
 			cmdBindDescriptors(cmd, particlesRootSignature, descriptorCount, descriptors);
 			cmdBindVertexBuffer(cmd, 1, &particleVertices, nullptr);
 			cmdDrawInstanced(cmd, particleVertexCount, 0, emitter.getAliveParticlesCount(), 0);
 		}
 		cmdEndDebugMarker(cmd);
-
+		
 		{
 		TextureBarrier barriers[] = 
 		{
@@ -1321,19 +1297,19 @@ public:
 			floorDrawParameters[descriptorCount++].ppBuffers = &shadowReceiversUniformBuffer[gFrameIndex];
 
 			floorDrawParameters[descriptorCount].pName = "shadowMapDepth";
-			floorDrawParameters[descriptorCount++].ppTextures = &shadowMap->pTexture;
+			floorDrawParameters[descriptorCount++].ppTextures = &shadowMapDepth->pTexture;
 
 			floorDrawParameters[descriptorCount].pName = "shadowMapColor";
-			floorDrawParameters[descriptorCount++].ppTextures = &shadowMapColorFilter->pTexture;
+			floorDrawParameters[descriptorCount++].ppTextures = &shadowMapColor->pTexture;
 
 			ASSERT(descriptorCount <= _countof(floorDrawParameters));
 
 			cmdBeginDebugMarker(cmd, 1, 1, 1, "Draw floor");
 
-				TextureBarrier shadowMapBarrier[] =
+				TextureBarrier shadowMapBarrier[SHADOW_MAP_BUFFERS_COUNT] =
 				{
-					{ shadowMap->pTexture, RESOURCE_STATE_SHADER_RESOURCE },
-					{ shadowMapColorFilter->pTexture, RESOURCE_STATE_SHADER_RESOURCE },
+					{ shadowMapDepth->pTexture, RESOURCE_STATE_SHADER_RESOURCE },
+					{ shadowMapColor->pTexture, RESOURCE_STATE_SHADER_RESOURCE },
 				};
 				cmdResourceBarrier(cmd, 0, nullptr, _countof(shadowMapBarrier), shadowMapBarrier,  /*batch: */false);
 
