@@ -51,7 +51,7 @@ struct ParticlesUniform final
 		positions{},
 		timeAndStyle{},
 		colorAndSizeScale{},
-		particlesLifeLength(0)
+		particlesLifeLength(0.0f)
 	{
 	}
 
@@ -107,34 +107,37 @@ private:
 	static const unsigned PRE_RENDERED_FRAMES_COUNT = 3u;
 
 	HiresTimer timer;
+	
+	LogManager logManager;
 
 	Renderer* renderer = nullptr;
+	SwapChain* swapChain = nullptr;
 
 	Queue* commandQueue = nullptr;
 	CmdPool* commandsPool = nullptr;
 	Cmd** commandsBuffers = nullptr;
 
-	SwapChain* swapChain = nullptr;
+	uint32_t preRenderedFrameIndex = 0;
+
 	Fence* frameCompleteFences[PRE_RENDERED_FRAMES_COUNT] = { nullptr };
 	Semaphore* imageAcquiredSemaphore = nullptr;
 	Semaphore* frameCompleteSemaphores[PRE_RENDERED_FRAMES_COUNT] = { nullptr };
 
+	DepthState* depthTestEnabledState = nullptr;
+	Buffer* cameraViewProjectionUniformBuffers[PRE_RENDERED_FRAMES_COUNT] = { nullptr };
+	ProjectionUniforms commonUniformData;
+
+	RenderTarget* depthBuffer = nullptr;
+	RenderTarget* shadowMapDepthBuffer = nullptr;
+
 	Shader* skyBoxShader = nullptr;
 	Buffer* skyBoxVertexBuffer = nullptr;
 	Pipeline* skyBoxPipeline = nullptr;
+	RasterizerState* skyBoxRasterizerState = nullptr;
 	RootSignature* skyBoxRootSignature = nullptr;
 	Sampler* skyBoxSampler = nullptr;
 	Texture* skyBoxTextures[SKY_BOX_FACES_COUNT] = { nullptr };
-
-	DepthState* depthTestEnabledState = nullptr;
-	RasterizerState* skyBoxRasterizerState = nullptr;
-
-	Buffer* cameraViewProjectionUniformBuffers[PRE_RENDERED_FRAMES_COUNT] = { nullptr };
 	Buffer* skyBoxUniformBuffers[PRE_RENDERED_FRAMES_COUNT] = { nullptr };
-
-	uint32_t preRenderedFrameIndex = 0;
-
-	ProjectionUniforms commonUniformData;
 	ProjectionUniforms skyBoxUniformData;
 
 	#if defined(NEED_JOYSTICK)
@@ -144,21 +147,16 @@ private:
 	TextDrawDesc frameTimeDraw{/*font: */0, /*color: */0xff000000, /*size: */18};
 	UIApp userInterface;
 
-	LogManager logManager;
-
-	RenderTarget* depthBuffer = nullptr;
-	RenderTarget* shadowMapDepthBuffer = nullptr;
-
 	static const int FLOOR_VERTEX_COUNT = 6;
 	Shader* floorShader = nullptr;
 	Shader* floorDepthOnlyShader = nullptr;
 	Buffer* floorVertices = nullptr;
-	Pipeline* floorPipeline = nullptr;
-	Pipeline* floorShadowMapDepthOnlyPassPipeline = nullptr;
 	BlendState* noColorWriteBlendState = nullptr;
 	RasterizerState* floorRasterizerState = nullptr;
-	Sampler* shadowMapSampler = nullptr;
+	Pipeline* floorPipeline = nullptr;
+	Pipeline* floorShadowMapDepthOnlyPassPipeline = nullptr;
 	RootSignature* floorRootSignature = nullptr;
+	Sampler* shadowMapSampler = nullptr;
 	Buffer* shadowReceiversUniformBuffer[PRE_RENDERED_FRAMES_COUNT] = { nullptr };
 
 	static const int maxParticlesCount = 1;
@@ -213,19 +211,19 @@ private:
 
 	void prepareFloorVertexBuffer()
 	{
-		const auto floorHalfSize = 100.0f;
+		const auto FLOOR_HALF_SIZE = 100.0f;
 
 		const auto FLOATS_PER_FLOOR_VERTEX = 3;
 
 		const float floorMeshPositions[] =
 		{
-			-floorHalfSize, 0.0f, +floorHalfSize,
-			+floorHalfSize, 0.0f, +floorHalfSize,
-			+floorHalfSize, 0.0f, -floorHalfSize,
+			-FLOOR_HALF_SIZE, 0.0f, +FLOOR_HALF_SIZE,
+			+FLOOR_HALF_SIZE, 0.0f, +FLOOR_HALF_SIZE,
+			+FLOOR_HALF_SIZE, 0.0f, -FLOOR_HALF_SIZE,
 
-			-floorHalfSize, 0.0f, -floorHalfSize,
-			-floorHalfSize, 0.0f, +floorHalfSize,
-			+floorHalfSize, 0.0f, -floorHalfSize,
+			-FLOOR_HALF_SIZE, 0.0f, -FLOOR_HALF_SIZE,
+			-FLOOR_HALF_SIZE, 0.0f, +FLOOR_HALF_SIZE,
+			+FLOOR_HALF_SIZE, 0.0f, -FLOOR_HALF_SIZE,
 		};
 
 		ASSERT(0 == (sizeof(floorMeshPositions) / sizeof(float)) % FLOATS_PER_FLOOR_VERTEX);
@@ -742,11 +740,11 @@ public:
 		commandsQueueDescription.mType = CMD_POOL_DIRECT;
 		addQueue(renderer, &commandsQueueDescription, &commandQueue);
 		addCmdPool(renderer, commandQueue, /*transient: */false, &commandsPool);
-		addCmd_n(commandsPool, false, PRE_RENDERED_FRAMES_COUNT, &commandsBuffers);
+		addCmd_n(commandsPool, /*secondary: */false, PRE_RENDERED_FRAMES_COUNT, &commandsBuffers);
 
 		ASSERT(PRE_RENDERED_FRAMES_COUNT  == _countof(frameCompleteFences));
 		ASSERT(PRE_RENDERED_FRAMES_COUNT  == _countof(frameCompleteSemaphores));
-		for (uint32_t i = 0; i < PRE_RENDERED_FRAMES_COUNT; ++i)
+		for (auto i = 0u; i < PRE_RENDERED_FRAMES_COUNT; ++i)
 		{
 			addFence(renderer, &frameCompleteFences[i]);
 			addSemaphore(renderer, &frameCompleteSemaphores[i]);
@@ -803,7 +801,7 @@ public:
 
 		userInterface.LoadFont("TitilliumText/TitilliumText-Bold.otf", FSR_Builtin_Fonts);
 
-		const CameraMotionParameters cameraMotionParameters { /*maxc speed: */160.0f, /*acceleration: */600.0f, /*braking: */200.0f };
+		const CameraMotionParameters cameraMotionParameters { /*max speed: */160.0f, /*acceleration: */600.0f, /*braking: */200.0f };
 		const vec3 cameraPosition { 48.0f, 48.0f, 20.0f };
 		const vec3 lookAt { 0 };
 
@@ -846,49 +844,46 @@ public:
 			removeResource(texture);
 		}
 			
+		removeShader(renderer, floorShader);
+		removeShader(renderer, floorDepthOnlyShader);
+		removeResource(floorVertices);
+		removeBlendState(noColorWriteBlendState);
+		removeRasterizerState(floorRasterizerState);
+		
+		removeSampler(renderer, shadowMapSampler);
+		removeRootSignature(renderer, floorRootSignature);
 
+		removeResource(particleVertices);
+		removeRasterizerState(particlesRasterizerState);
+
+		removeDepthState(particlesDepthState);
+		removeBlendState(particlesBlendState);
+
+		removeSampler(renderer, particleImageSampler);
+		removeResource(particlesTexture);
+		removeShader(renderer, particlesShader);
+		removeRootSignature(renderer, particlesRootSignature);
+
+		removeShader(renderer, particlesShadowShader);
+
+		for (auto particleInstancesData : particlesPerInstanceData)
 		{
-			removeShader(renderer, floorShader);
-			removeShader(renderer, floorDepthOnlyShader);
-			removeResource(floorVertices);
-			removeBlendState(noColorWriteBlendState);
-			removeRasterizerState(floorRasterizerState);
-			
-			removeSampler(renderer, shadowMapSampler);
-			removeRootSignature(renderer, floorRootSignature);
+			removeResource(particleInstancesData);
+		}
+		
+		for (auto particleInstancesData : particlesPerInstanceDataShadowMap)
+		{
+			removeResource(particleInstancesData);
+		}
 
-			removeResource(particleVertices);
-			removeRasterizerState(particlesRasterizerState);
+		for (auto buffer : shadowMapUniformsBuffers)
+		{
+			removeResource(buffer);
+		}
 
-			removeDepthState(particlesDepthState);
-			removeBlendState(particlesBlendState);
-
-			removeSampler(renderer, particleImageSampler);
-			removeResource(particlesTexture);
-			removeShader(renderer, particlesShader);
-			removeRootSignature(renderer, particlesRootSignature);
-
-			removeShader(renderer, particlesShadowShader);
-
-			for (auto particleInstancesData : particlesPerInstanceData)
-			{
-				removeResource(particleInstancesData);
-			}
-			
-			for (auto particleInstancesData : particlesPerInstanceDataShadowMap)
-			{
-				removeResource(particleInstancesData);
-			}
-
-			for (auto buffer : shadowMapUniformsBuffers)
-			{
-				removeResource(buffer);
-			}
-
-			for (auto buffer : shadowReceiversUniformBuffer)
-			{
-				removeResource(buffer);
-			}
+		for (auto buffer : shadowReceiversUniformBuffer)
+		{
+			removeResource(buffer);
 		}
 
 		removeSampler(renderer, skyBoxSampler);
@@ -943,6 +938,7 @@ public:
 		maxClearValue.b = 1.0f;
 		maxClearValue.a = 1.0f;
 
+		{
 		RenderTargetDesc shadowMapDepthBufferDescription = {};
 		shadowMapDepthBufferDescription.mArraySize = 1;
 		shadowMapDepthBufferDescription.mClearValue = maxClearValue;
@@ -955,7 +951,6 @@ public:
 		shadowMapDepthBufferDescription.mSampleCount = SAMPLE_COUNT_1;
 		shadowMapDepthBufferDescription.mSampleQuality = 0;
 		shadowMapDepthBufferDescription.pDebugName = L"Shadow Map Depth Render Target";
-
 		addRenderTarget(renderer, &shadowMapDepthBufferDescription, &shadowMapDepth);
 
 		RenderTargetDesc shadowMapColorBufferDescription = {};
@@ -968,10 +963,9 @@ public:
 		shadowMapColorBufferDescription.mSampleCount = SAMPLE_COUNT_1;
 		shadowMapColorBufferDescription.mSampleQuality = 0;
 		shadowMapColorBufferDescription.pDebugName = L"Shadow Map Color Render Target";
-
 		addRenderTarget(renderer, &shadowMapColorBufferDescription, &shadowMapColor);
+		}
 
-		//layout and pipeline for sphere draw
 		VertexLayout vertexLayout = {};
 		vertexLayout.mAttribCount = 2;
 		vertexLayout.mAttribs[0].mSemantic = SEMANTIC_POSITION;
@@ -1046,6 +1040,7 @@ public:
 		pipelineSettings.pVertexLayout = &vertexLayout;
 		addPipeline(renderer, &pipelineSettings, &skyBoxPipeline);
 
+		{
 		GraphicsPipelineDesc shadowMapParticlesPipelineSettings = pipelineSettings;
 		shadowMapParticlesPipelineSettings.mRenderTargetCount = SHADOW_MAP_BUFFERS_COUNT;
 		shadowMapParticlesPipelineSettings.pDepthState = particlesDepthState;
@@ -1072,6 +1067,7 @@ public:
 		floorShadowMapPipelineSettings.mSampleCount = shadowMapParticlesPipelineSettings.mSampleCount;
 		floorShadowMapPipelineSettings.mSampleQuality = shadowMapParticlesPipelineSettings.mSampleQuality;
 		addPipeline(renderer, &floorShadowMapPipelineSettings, &floorShadowMapDepthOnlyPassPipeline);
+		}
 
 		return true;
 	}
@@ -1474,7 +1470,7 @@ public:
 		swapChainDescription.mHeight = mSettings.mHeight;
 		swapChainDescription.mImageCount = PRE_RENDERED_FRAMES_COUNT;
 		swapChainDescription.mSampleCount = SAMPLE_COUNT_1;
-		swapChainDescription.mColorFormat = getRecommendedSwapchainFormat(true);
+		swapChainDescription.mColorFormat = getRecommendedSwapchainFormat(/*hintHDR: */true);
 		swapChainDescription.mEnableVsync = false;
 		::addSwapChain(renderer, &swapChainDescription, &swapChain);
 
