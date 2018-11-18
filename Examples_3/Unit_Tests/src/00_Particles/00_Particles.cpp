@@ -1059,7 +1059,7 @@ public:
 
 				auto descriptorCount = 0u;
 
-				floorDrawParameters[descriptorCount].pName = "uniformBlock";
+				floorDrawParameters[descriptorCount].pName = "ProjectionUniforms";
 				floorDrawParameters[descriptorCount++].ppBuffers = &shadowMapUniformsBuffers[preRenderedFrameIndex];
 
 				ASSERT(descriptorCount <= _countof(floorDrawParameters));
@@ -1086,7 +1086,7 @@ public:
 
 				DescriptorData particlesShadowMapDescriptors[MAX_DESCRIPTORS_COUNT] = {};
 				int descriptorCount = 0;
-				particlesShadowMapDescriptors[descriptorCount].pName = "uniformBlock";
+				particlesShadowMapDescriptors[descriptorCount].pName = "ProjectionUniforms";
 				particlesShadowMapDescriptors[descriptorCount++].ppBuffers = &shadowMapUniformsBuffers[preRenderedFrameIndex];
 				particlesShadowMapDescriptors[descriptorCount].pName = "particlesInstances";
 				particlesShadowMapDescriptors[descriptorCount++].ppBuffers = &particlesPerInstanceDataShadowMap[preRenderedFrameIndex];
@@ -1125,7 +1125,7 @@ public:
 			DescriptorData params[MAX_DESCRIPTORS_COUNT] = {};
 			auto descriptorCount = 0u;
 
-			params[descriptorCount].pName = "uniformBlock";
+			params[descriptorCount].pName = "ProjectionUniforms";
 			params[descriptorCount++].ppBuffers = &skyboxUniformBuffers[preRenderedFrameIndex];
 			params[descriptorCount].pName = "RightText";
 			params[descriptorCount++].ppTextures = &skyBoxTextures[0];
@@ -1156,7 +1156,7 @@ public:
 			
 			auto descriptorCount = 0u;
 
-			floorDrawParameters[descriptorCount].pName = "uniformBlock";
+			floorDrawParameters[descriptorCount].pName = "ProjectionUniforms";
 			floorDrawParameters[descriptorCount++].ppBuffers = &commonUniformBuffers[preRenderedFrameIndex];
 			
 			floorDrawParameters[descriptorCount].pName = "shadowReceiverUniforms";
@@ -1196,7 +1196,7 @@ public:
 				DescriptorData particlesDescriptors[MAX_DESCRIPTORS_COUNT] = {};
 				auto descriptorCount = 0u;
 
-				particlesDescriptors[descriptorCount].pName = "uniformBlock";
+				particlesDescriptors[descriptorCount].pName = "ProjectionUniforms";
 				particlesDescriptors[descriptorCount++].ppBuffers = &commonUniformBuffers[preRenderedFrameIndex];
 
 				particlesDescriptors[descriptorCount].pName = "image";

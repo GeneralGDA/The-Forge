@@ -24,19 +24,22 @@
 
 // Shader for Skybox in Unit Test 01 - Transformations
 
-cbuffer uniformBlock : register(b0)
+cbuffer ProjectionUniforms : register(b0)
 {
     float4x4 mvp;
 	float4x4 camera;
+
 	float4 zProjection; // x <- scale, y <- bias
 };
 
-struct VSOutput {
+struct VSOutput 
+{
 	float4 Position : SV_POSITION;
     float4 TexCoord : TEXCOORD;
 };
 
 SamplerState uSampler0 : register(s7);
+
 Texture2D RightText : register(t1);
 Texture2D LeftText : register(t2);
 Texture2D TopText : register(t3);
@@ -61,7 +64,7 @@ float4 main(VSOutput input) : SV_TARGET
         newtextcoord = float2(newtextcoord.x, 1 - newtextcoord.y);
         return LeftText.Sample(uSampler0, newtextcoord);
     }
-    if (side == 4.0f)
+    else if (side == 4.0f)
     {
         newtextcoord = (input.TexCoord.xz) / 20 +0.5;
         newtextcoord = float2(newtextcoord.x, 1 - newtextcoord.y);

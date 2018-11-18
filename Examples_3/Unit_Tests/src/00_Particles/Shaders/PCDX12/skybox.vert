@@ -24,14 +24,16 @@
 
 // Shader for Skybox in Unit Test 01 - Transformations
 
-cbuffer uniformBlock : register(b0)
+cbuffer ProjectionUniforms : register(b0)
 {
     float4x4 mvp;
 	float4x4 camera;
+
 	float4 zProjection; // x <- scale, y <- bias
 };
 
-struct VSOutput {
+struct VSOutput 
+{
 	float4 Position : SV_POSITION;
     float4 TexCoord : TEXCOORD;
 };

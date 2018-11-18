@@ -1,7 +1,8 @@
-cbuffer uniformBlock : register(b0)
+cbuffer ProjectionUniforms : register(b0)
 {
     float4x4 mvp;
 	float4x4 camera;
+
 	float4 zProjection; // x <- scale, y <- bias
 };
 
@@ -18,9 +19,9 @@ cbuffer particlesInstances : register(b1)
 	float particleLifeTime;
 };
 
-struct VSOutput 
+struct VertexShaderOutput 
 {
-	float4 position : SV_POSITION;
+	float4 projectedPosition : SV_POSITION;
 	float2 texCoord : TEXCOORD;
 	float cameraSpaceDepth : LINEAR_DEPTH;
 	float alphaScale : ALPHA_MULTIPLIER;
@@ -52,9 +53,9 @@ float alphaScaleFromAge(float age)
 	return baseAlpha;
 }
 
-VSOutput main(float4 size : POSITION, uint InstanceID : SV_InstanceID)
+VertexShaderOutput main(float4 size : POSITION, uint InstanceID : SV_InstanceID)
 {
-	VSOutput result;
+	VertexShaderOutput result;
 
 	float aliveTime = timeAndStyle[InstanceID].x;
 	float styleIndex = timeAndStyle[InstanceID].y;
@@ -66,10 +67,10 @@ VSOutput main(float4 size : POSITION, uint InstanceID : SV_InstanceID)
 
 	float3 xAxis = camera[0].xyz;
 	float3 yAxis = camera[1].xyz;
-	float3 position = positions[InstanceID].xyz + (xAxis * (size.x * sizeScale)) + (yAxis * (size.y * sizeScale));
+	float3 worldSpacePosition = positions[InstanceID].xyz + (xAxis * (size.x * sizeScale)) + (yAxis * (size.y * sizeScale));
 
-    result.position = mul(mvp, float4(position, 1.0f));
-    result.cameraSpaceDepth = dot(camera[2], float4(position, 1.0f));
+    result.projectedPosition = mul(mvp, float4(worldSpacePosition, 1.0f));
+    result.cameraSpaceDepth = dot(camera[2], float4(worldSpacePosition, 1.0f));
 	result.alphaScale = alphaScale;
 	result.color = colorAndSizeScale[styleIndex].rgb;
 

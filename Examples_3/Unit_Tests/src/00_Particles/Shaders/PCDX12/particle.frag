@@ -1,7 +1,8 @@
-cbuffer uniformBlock : register(b0)
+cbuffer ProjectionUniforms : register(b0)
 {
     float4x4 mvp;
 	float4x4 camera;
+
 	float4 zProjection; // x <- scale, y <- bias
 };
 
@@ -9,9 +10,9 @@ SamplerState particleImageSampler : register(s1);
 Texture2D image : register(t1);
 Texture2D depthBuffer : register(t2);
 
-struct VSOutput 
+struct VertexShaderOutput 
 {
-	float4 position : SV_POSITION;
+	float4 projectedPosition : SV_POSITION;
 	float2 texCoord : TEXCOORD;
 	float cameraSpaceDepth : LINEAR_DEPTH;
 	float alphaScale : ALPHA_MULTIPLIER;
@@ -38,9 +39,9 @@ float softenParticle(float currentDepth, float bufferDepth)
 	return smoothstep(0, threshold, depthDelta);
 }
 
-float4 main(VSOutput input) : SV_TARGET
+float4 main(VertexShaderOutput input) : SV_TARGET
 {
-	float bufferDepth = readDepth(input.position);
+	float bufferDepth = readDepth(input.projectedPosition);
 	float alphaMultiplier = softenParticle(input.cameraSpaceDepth, bufferDepth);
 	
 	float4 color = image.Sample(particleImageSampler, input.texCoord);

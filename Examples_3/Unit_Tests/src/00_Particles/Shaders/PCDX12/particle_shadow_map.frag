@@ -1,4 +1,4 @@
-cbuffer uniformBlock : register(b0)
+cbuffer ProjectionUniforms : register(b0)
 {
     float4x4 mvp;
 	float4x4 camera;
@@ -12,7 +12,7 @@ Texture2D depthBuffer : register(t2);
 
 struct VertexShaderOutput 
 {
-	float4 position : SV_POSITION;
+	float4 projectedPosition : SV_POSITION;
 	float2 texCoord : TEXCOORD;
 	float alphaScale : ALPHA_MULTIPLIER;
 	float3 color : COLOR;
@@ -47,7 +47,7 @@ float softenParticle(float currentDepth, float bufferDepth)
 
 PixelShaderOutput main(VertexShaderOutput input)
 {
-	float bufferDepth = readDepth(input.position);
+	float bufferDepth = readDepth(input.projectedPosition);
 	float alphaMultiplier = softenParticle(input.cameraSpaceDepth, bufferDepth);
 
 	PixelShaderOutput result;
