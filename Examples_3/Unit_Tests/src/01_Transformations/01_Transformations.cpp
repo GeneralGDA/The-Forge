@@ -22,61 +22,42 @@
  * under the License.
 */
 
-// Unit Test for testing transformations using a solar system.
-// Tests the basic mat4 transformations, such as scaling, rotation, and translation.
-
 #include "01_Emitter.h"
 
-#define MAX_PLANETS 20 // Does not affect test, just for allocating space in uniform block. Must match with shader.
-
-//tiny stl
 #include "../../../../Common_3/ThirdParty/OpenSource/TinySTL/vector.h"
 #include "../../../../Common_3/ThirdParty/OpenSource/TinySTL/string.h"
 
-//Interfaces
 #include "../../../../Common_3/OS/Interfaces/ICameraController.h"
 #include "../../../../Common_3/OS/Interfaces/IApp.h"
 #include "../../../../Common_3/OS/Interfaces/ILogManager.h"
 #include "../../../../Common_3/OS/Interfaces/IFileSystem.h"
 #include "../../../../Common_3/OS/Interfaces/ITimeManager.h"
-#include "../../../../Middleware_3/UI/AppUI.h"
 #include "../../../../Common_3/OS/Core/DebugRenderer.h"
 #include "../../../../Common_3/Renderer/IRenderer.h"
 #include "../../../../Common_3/Renderer/ResourceLoader.h"
+#include "../../../../Common_3/OS/Math/MathTypes.h"
+#include "../../../../Common_3/OS/Interfaces/IMemoryManager.h"
 
+#include "../../../../Middleware_3/UI/AppUI.h"
 #include "../../../../Middleware_3/Input/InputSystem.h"
 #include "../../../../Middleware_3/Input/InputMappings.h"
-//Math
-#include "../../../../Common_3/OS/Math/MathTypes.h"
 
-#include "../../../../Common_3/OS/Interfaces/IMemoryManager.h"
-/// Demo structures
-struct PlanetInfoStruct
-{
-	uint mParentIndex;
-	vec4 mColor;
-	float mYOrbitSpeed; // Rotation speed around parent
-	float mZOrbitSpeed;
-	float mRotationSpeed; // Rotation speed around self
-	mat4 mTranslationMat;
-	mat4 mScaleMat;
-	mat4 mSharedMat;	// Matrix to pass down to children
-};
+#if defined(TARGET_IOS) || defined(__ANDROID__)
+#define NEED_JOYSTICK
+#endif
 
-struct UniformBlock
+struct UniformBlock final
 {
 	mat4 mProjectView;
 	mat4 mCamera;
 	vec4 zProjection;
-	mat4 mToWorldMat[MAX_PLANETS];
-	vec4 mColor[MAX_PLANETS];
 
 	// Point Light Information
 	vec3 mLightPosition;
 	vec3 mLightColor;
 };
 
-struct ShadowReceiverUniform
+struct ShadowReceiverUniform final
 {
 	mat4 shadowMapMvp;
 	mat4 shadowMapCamera;
@@ -103,13 +84,6 @@ struct Particles final
 };
 
 const uint32_t	  gImageCount = 3;
-const int		   gSphereResolution = 30; // Increase for higher resolution spheres
-const float		 gSphereDiameter = 0.5f;
-const uint		  gNumPlanets = 11;	  // Sun, Mercury -> Neptune, Pluto, Moon
-const uint		  gTimeOffset = 600000;   // For visually better starting locations
-const float		 gRotSelfScale = 0.0004f;
-const float		 gRotOrbitYScale = 0.001f;
-const float		 gRotOrbitZScale = 0.00001f;
 
 Renderer*		   pRenderer = NULL;
 
@@ -123,17 +97,13 @@ Fence*			  pRenderCompleteFences[gImageCount] = { NULL };
 Semaphore*		  pImageAcquiredSemaphore = NULL;
 Semaphore*		  pRenderCompleteSemaphores[gImageCount] = { NULL };
 
-Shader*			 pSphereShader = NULL;
-Buffer*			 pSphereVertexBuffer = NULL;
-Pipeline*		   pSpherePipeline = NULL;
-
 Shader*			 pSkyBoxDrawShader = NULL;
 Buffer*			 pSkyBoxVertexBuffer = NULL;
 Pipeline*		   pSkyBoxDrawPipeline = NULL;
 RootSignature*	  pRootSignature = NULL;
 Sampler*			pSamplerSkyBox = NULL;
 Texture*			pSkyBoxTextures[6];
-#if defined(TARGET_IOS) || defined(__ANDROID__)
+#if defined(NEED_JOYSTICK)
 VirtualJoystickUI   gVirtualJoystick;
 #endif
 DepthState*		 pDepth = NULL;
@@ -145,14 +115,11 @@ Buffer*				pSkyboxUniformBuffer[gImageCount] = { NULL };
 
 uint32_t			gFrameIndex = 0;
 
-int					gNumberOfSpherePoints;
 UniformBlock		gUniformData;
 UniformBlock		gUniformDataSky;
-PlanetInfoStruct	gPlanetInfoData[gNumPlanets];
 
 ICameraController*  pCameraController = NULL;
 
-/// UI
 UIApp			   gAppUI;
 
 FileSystem		  gFileSystem;
@@ -181,7 +148,7 @@ const char* pszBases[] =
 	"",									// FSR_OtherFiles
 };
 
-TextDrawDesc gFrameTimeDraw = TextDrawDesc(0, 0xff00ffff, 18);
+TextDrawDesc gFrameTimeDraw = TextDrawDesc(0, 0xff000000, 18);
 
 class Transformations final : public IApp
 {
@@ -485,7 +452,7 @@ public:
 
 	bool Init() override
 	{
-		RendererDesc settings = { 0 };
+		RendererDesc settings = {};
 		initRenderer(GetName(), &settings, &pRenderer);
 		
 		if (!pRenderer)
@@ -527,7 +494,6 @@ public:
 		}
 		#endif
 
-		//==
 		{
 			prepareFloorResources();
 			prepareParticlesResources();
@@ -536,12 +502,8 @@ public:
 		ShaderLoadDesc skyShader = {};
 		skyShader.mStages[0] = { "skybox.vert", NULL, 0, FSR_SrcShaders };
 		skyShader.mStages[1] = { "skybox.frag", NULL, 0, FSR_SrcShaders };
-		ShaderLoadDesc basicShader = {};
-		basicShader.mStages[0] = { "basic.vert", NULL, 0, FSR_SrcShaders };
-		basicShader.mStages[1] = { "basic.frag", NULL, 0, FSR_SrcShaders };
-
+		
 		addShader(pRenderer, &skyShader, &pSkyBoxDrawShader);
-		addShader(pRenderer, &basicShader, &pSphereShader);
 
 		SamplerDesc samplerDesc = 
 		{
@@ -550,7 +512,7 @@ public:
 		};
 		addSampler(pRenderer, &samplerDesc, &pSamplerSkyBox);
 
-		Shader* shaders[] = { pSphereShader, pSkyBoxDrawShader };
+		Shader* shaders[] = { pSkyBoxDrawShader };
 		const char* pStaticSamplersNames[] = { "uSampler0" };
 		Sampler* staticSamplers[] = { pSamplerSkyBox };
 		RootSignatureDesc rootDesc = {};
@@ -574,23 +536,6 @@ public:
 		depthStateDesc.mDepthWrite = true;
 		depthStateDesc.mDepthFunc = CMP_LEQUAL;
 		addDepthState(pRenderer, &depthStateDesc, &pDepth);
-
-		// Generate sphere vertex buffer
-		float* pSpherePoints;
-		generateSpherePoints(&pSpherePoints, &gNumberOfSpherePoints, gSphereResolution, gSphereDiameter);
-
-		uint64_t sphereDataSize = gNumberOfSpherePoints * sizeof(float);
-		BufferLoadDesc sphereVbDesc = {};
-		sphereVbDesc.mDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
-		sphereVbDesc.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_GPU_ONLY;
-		sphereVbDesc.mDesc.mSize = sphereDataSize;
-		sphereVbDesc.mDesc.mVertexStride = sizeof(float) * 6;
-		sphereVbDesc.pData = pSpherePoints;
-		sphereVbDesc.ppBuffer = &pSphereVertexBuffer;
-		addResource(&sphereVbDesc);
-
-		// Need to free memory;
-		conf_free(pSpherePoints);
 
 		//Generate sky box vertex buffer
 		float skyBoxPoints[] = 
@@ -664,105 +609,6 @@ public:
 
 		finishResourceLoading();
 
-		// Sun
-		gPlanetInfoData[0].mParentIndex = 0;
-		gPlanetInfoData[0].mYOrbitSpeed = 0; // Earth years for one orbit
-		gPlanetInfoData[0].mZOrbitSpeed = 0;
-		gPlanetInfoData[0].mRotationSpeed = 24.0f; // Earth days for one rotation
-		gPlanetInfoData[0].mTranslationMat = mat4::identity();
-		gPlanetInfoData[0].mScaleMat = mat4::scale(vec3(10.0f));
-		gPlanetInfoData[0].mColor = vec4(0.9f, 0.6f, 0.1f, 0.0f);
-
-		// Mercury
-		gPlanetInfoData[1].mParentIndex = 0;
-		gPlanetInfoData[1].mYOrbitSpeed = 0.5f;
-		gPlanetInfoData[1].mZOrbitSpeed = 0.0f;
-		gPlanetInfoData[1].mRotationSpeed = 58.7f;
-		gPlanetInfoData[1].mTranslationMat = mat4::translation(vec3(10.0f, 0, 0));
-		gPlanetInfoData[1].mScaleMat = mat4::scale(vec3(1.0f));
-		gPlanetInfoData[1].mColor = vec4(0.7f, 0.3f, 0.1f, 1.0f);
-
-		// Venus
-		gPlanetInfoData[2].mParentIndex = 0;
-		gPlanetInfoData[2].mYOrbitSpeed = 0.8f;
-		gPlanetInfoData[2].mZOrbitSpeed = 0.0f;
-		gPlanetInfoData[2].mRotationSpeed = 243.0f;
-		gPlanetInfoData[2].mTranslationMat = mat4::translation(vec3(20.0f, 0, 5));
-		gPlanetInfoData[2].mScaleMat = mat4::scale(vec3(2));
-		gPlanetInfoData[2].mColor = vec4(0.8f, 0.6f, 0.1f, 1.0f);
-
-		// Earth
-		gPlanetInfoData[3].mParentIndex = 0;
-		gPlanetInfoData[3].mYOrbitSpeed = 1.0f;
-		gPlanetInfoData[3].mZOrbitSpeed = 0.0f;
-		gPlanetInfoData[3].mRotationSpeed = 1.0f;
-		gPlanetInfoData[3].mTranslationMat = mat4::translation(vec3(30.0f, 0, 0));
-		gPlanetInfoData[3].mScaleMat = mat4::scale(vec3(4));
-		gPlanetInfoData[3].mColor = vec4(0.3f, 0.2f, 0.8f, 1.0f);
-
-		// Mars
-		gPlanetInfoData[4].mParentIndex = 0;
-		gPlanetInfoData[4].mYOrbitSpeed = 2.0f;
-		gPlanetInfoData[4].mZOrbitSpeed = 0.0f;
-		gPlanetInfoData[4].mRotationSpeed = 1.1f;
-		gPlanetInfoData[4].mTranslationMat = mat4::translation(vec3(40.0f, 0, 0));
-		gPlanetInfoData[4].mScaleMat = mat4::scale(vec3(3));
-		gPlanetInfoData[4].mColor = vec4(0.9f, 0.3f, 0.1f, 1.0f);
-
-		// Jupiter
-		gPlanetInfoData[5].mParentIndex = 0;
-		gPlanetInfoData[5].mYOrbitSpeed = 11.0f;
-		gPlanetInfoData[5].mZOrbitSpeed = 0.0f;
-		gPlanetInfoData[5].mRotationSpeed = 0.4f;
-		gPlanetInfoData[5].mTranslationMat = mat4::translation(vec3(50.0f, 0, 0));
-		gPlanetInfoData[5].mScaleMat = mat4::scale(vec3(8));
-		gPlanetInfoData[5].mColor = vec4(0.6f, 0.4f, 0.4f, 1.0f);
-
-		// Saturn
-		gPlanetInfoData[6].mParentIndex = 0;
-		gPlanetInfoData[6].mYOrbitSpeed = 29.4f;
-		gPlanetInfoData[6].mZOrbitSpeed = 0.0f;
-		gPlanetInfoData[6].mRotationSpeed = 0.5f;
-		gPlanetInfoData[6].mTranslationMat = mat4::translation(vec3(60.0f, 0, 0));
-		gPlanetInfoData[6].mScaleMat = mat4::scale(vec3(6));
-		gPlanetInfoData[6].mColor = vec4(0.7f, 0.7f, 0.5f, 1.0f);
-
-		// Uranus
-		gPlanetInfoData[7].mParentIndex = 0;
-		gPlanetInfoData[7].mYOrbitSpeed = 84.07f;
-		gPlanetInfoData[7].mZOrbitSpeed = 0.0f;
-		gPlanetInfoData[7].mRotationSpeed = 0.8f;
-		gPlanetInfoData[7].mTranslationMat = mat4::translation(vec3(70.0f, 0, 0));
-		gPlanetInfoData[7].mScaleMat = mat4::scale(vec3(7));
-		gPlanetInfoData[7].mColor = vec4(0.4f, 0.4f, 0.6f, 1.0f);
-
-		// Neptune
-		gPlanetInfoData[8].mParentIndex = 0;
-		gPlanetInfoData[8].mYOrbitSpeed = 164.81f;
-		gPlanetInfoData[8].mZOrbitSpeed = 0.0f;
-		gPlanetInfoData[8].mRotationSpeed = 0.9f;
-		gPlanetInfoData[8].mTranslationMat = mat4::translation(vec3(80.0f, 0, 0));
-		gPlanetInfoData[8].mScaleMat = mat4::scale(vec3(8));
-		gPlanetInfoData[8].mColor = vec4(0.5f, 0.2f, 0.9f, 1.0f);
-
-		// Pluto - Not a planet XDD
-		gPlanetInfoData[9].mParentIndex = 0;
-		gPlanetInfoData[9].mYOrbitSpeed = 247.7f;
-		gPlanetInfoData[9].mZOrbitSpeed = 1.0f;
-		gPlanetInfoData[9].mRotationSpeed = 7.0f;
-		gPlanetInfoData[9].mTranslationMat = mat4::translation(vec3(90.0f, 0, 0));
-		gPlanetInfoData[9].mScaleMat = mat4::scale(vec3(1.0f));
-		gPlanetInfoData[9].mColor = vec4(0.7f, 0.5f, 0.5f, 1.0f);
-
-		// Moon
-		gPlanetInfoData[10].mParentIndex = 3;
-		gPlanetInfoData[10].mYOrbitSpeed = 1.0f;
-		gPlanetInfoData[10].mZOrbitSpeed = 200.0f;
-		gPlanetInfoData[10].mRotationSpeed = 27.0f;
-		gPlanetInfoData[10].mTranslationMat = mat4::translation(vec3(5.0f, 0, 0));
-		gPlanetInfoData[10].mScaleMat = mat4::scale(vec3(1));
-		gPlanetInfoData[10].mColor = vec4(0.3f, 0.3f, 0.4f, 1.0f);
-
 		if (!gAppUI.Init(pRenderer))
 		{
 			return false;
@@ -784,7 +630,7 @@ public:
 		return true;
 	}
 
-	void Exit()
+	void Exit() override
 	{
 		waitForFences(pGraphicsQueue, 1, &pRenderCompleteFences[gFrameIndex], true);
 
@@ -792,7 +638,7 @@ public:
 
 		removeDebugRendererInterface();
 
-		#if defined(TARGET_IOS) || defined(__ANDROID__)
+		#if defined(NEED_JOYSTICK)
 		gVirtualJoystick.Exit();
 		#endif
 
@@ -806,7 +652,6 @@ public:
 			removeResource(pSkyboxUniformBuffer[i]);
 		}
 
-		removeResource(pSphereVertexBuffer);
 		removeResource(pSkyBoxVertexBuffer);
 
 		for (auto& texture : pSkyBoxTextures)
@@ -860,7 +705,6 @@ public:
 		}
 
 		removeSampler(pRenderer, pSamplerSkyBox);
-		removeShader(pRenderer, pSphereShader);
 		removeShader(pRenderer, pSkyBoxDrawShader);
 		removeRootSignature(pRenderer, pRootSignature);
 
@@ -900,14 +744,14 @@ public:
 			return false;
 		}
 			
-		#if defined(TARGET_IOS) || defined(__ANDROID__)
+		#if defined(NEED_JOYSTICK)
 		if (!gVirtualJoystick.Load(pSwapChain->ppSwapchainRenderTargets[0], pDepthBuffer->mDesc.mFormat))
 		{
 			return false;
 		}
 		#endif
 
-		const ClearValue maxClearValue = { 1.0f, 1.0f, 1.0f, 1.0f };
+		const ClearValue maxClearValue {{1.0f, 1.0f, 1.0f, 1.0f}};
 
 		RenderTargetDesc shadowMapDepthBufferDescription = {};
 		shadowMapDepthBufferDescription.mArraySize = 1;
@@ -951,7 +795,7 @@ public:
 		vertexLayout.mAttribs[1].mLocation = 1;
 		vertexLayout.mAttribs[1].mOffset = 3 * sizeof(float);
 
-		GraphicsPipelineDesc pipelineSettings = { 0 };
+		GraphicsPipelineDesc pipelineSettings = {};
 		pipelineSettings.mPrimitiveTopo = PRIMITIVE_TOPO_TRI_LIST;
 		pipelineSettings.mRenderTargetCount = 1;
 		pipelineSettings.pDepthState = pDepth;
@@ -960,11 +804,8 @@ public:
 		pipelineSettings.mSampleCount = pSwapChain->ppSwapchainRenderTargets[0]->mDesc.mSampleCount;
 		pipelineSettings.mSampleQuality = pSwapChain->ppSwapchainRenderTargets[0]->mDesc.mSampleQuality;
 		pipelineSettings.mDepthStencilFormat = pDepthBuffer->mDesc.mFormat;
-		pipelineSettings.pRootSignature = pRootSignature;
-		pipelineSettings.pShaderProgram = pSphereShader;
 		pipelineSettings.pVertexLayout = &vertexLayout;
 		pipelineSettings.pRasterizerState = pSphereRast;
-		addPipeline(pRenderer, &pipelineSettings, &pSpherePipeline);
 
 		// floor pipeline
 		vertexLayout = {};
@@ -1036,16 +877,15 @@ public:
 
 	void Unload() override
 	{
-		waitForFences(pGraphicsQueue, gImageCount, pRenderCompleteFences, true);
+		waitForFences(pGraphicsQueue, gImageCount, pRenderCompleteFences, /*signel: */true);
 
 		gAppUI.Unload();
 
-#if defined(TARGET_IOS) || defined(__ANDROID__)
+		#if defined(NEED_JOYSTICK)
 		gVirtualJoystick.Unload();
-#endif
+		#endif
 
 		removePipeline(pRenderer, pSkyBoxDrawPipeline);
-		removePipeline(pRenderer, pSpherePipeline);
 		
 		removePipeline(pRenderer, floorPipeline);
 		removePipeline(pRenderer, particlesPipeline);
@@ -1061,68 +901,36 @@ public:
 
 	void Update(const float deltaTime) override
 	{
-		/************************************************************************/
-		// Input
-		/************************************************************************/
 		if (getKeyDown(KEY_BUTTON_X))
 		{
-			RecenterCameraView(170.0f);
+			recenterCameraView(170.0f);
 		}
 
 		pCameraController->update(deltaTime);
-		/************************************************************************/
-		// Scene Update
-		/************************************************************************/
-		static float currentTime = 0.0f;
-		currentTime += deltaTime * 1000.0f;
+		
+		mat4 cameraView = pCameraController->getViewMatrix();
 
-		// update camera with time
-		mat4 viewMat = pCameraController->getViewMatrix();
-
-		const float aspectInverse = (float)mSettings.mHeight / (float)mSettings.mWidth;
+		const float aspectInverse = static_cast<float>(mSettings.mHeight) / static_cast<float>(mSettings.mWidth);
 		const float horizontal_fov = PI / 2.0f;
 		const float zNear = 0.1f;
 		const float zFar = 1000.0f;
-		mat4 projMat = mat4::perspective(horizontal_fov, aspectInverse, zNear, zFar);
-		gUniformData.mProjectView = projMat * viewMat;
-		gUniformData.mCamera = viewMat;
+
+		const mat4 projection = mat4::perspective(horizontal_fov, aspectInverse, zNear, zFar);
+		gUniformData.mProjectView = projection * cameraView;
+		gUniformData.mCamera = cameraView;
 		gUniformData.zProjection.setX(zFar / (zFar - zNear));
 		gUniformData.zProjection.setY(- zFar * zNear / (zFar - zNear));
 		gUniformData.zProjection.setZ(0);
 		gUniformData.zProjection.setW(0);
-
-		// point light parameters
 		gUniformData.mLightPosition = vec3(0, 0, 0);
 		gUniformData.mLightColor = vec3(0.9f, 0.9f, 0.7f); // Pale Yellow
-
-		// update planet transformations
-		for (int i = 0; i < gNumPlanets; i++)
-		{
-			mat4 rotSelf, rotOrbitY, rotOrbitZ, trans, scale, parentMat;
-			rotSelf = rotOrbitY = rotOrbitZ = trans = scale = parentMat = mat4::identity();
-			if (gPlanetInfoData[i].mRotationSpeed > 0.0f)
-				rotSelf = mat4::rotationY(gRotSelfScale * (currentTime + gTimeOffset) / gPlanetInfoData[i].mRotationSpeed);
-			if (gPlanetInfoData[i].mYOrbitSpeed > 0.0f)
-				rotOrbitY = mat4::rotationY(gRotOrbitYScale * (currentTime + gTimeOffset) / gPlanetInfoData[i].mYOrbitSpeed);
-			if (gPlanetInfoData[i].mZOrbitSpeed > 0.0f)
-				rotOrbitZ = mat4::rotationZ(gRotOrbitZScale * (currentTime + gTimeOffset) / gPlanetInfoData[i].mZOrbitSpeed);
-			if (gPlanetInfoData[i].mParentIndex > 0)
-				parentMat = gPlanetInfoData[gPlanetInfoData[i].mParentIndex].mSharedMat;
-
-			trans = gPlanetInfoData[i].mTranslationMat;
-			scale = gPlanetInfoData[i].mScaleMat;
-
-			gPlanetInfoData[i].mSharedMat = parentMat * rotOrbitY * trans;
-			gUniformData.mToWorldMat[i] = parentMat *  rotOrbitY * rotOrbitZ * trans * rotSelf * scale;
-			gUniformData.mColor[i] = gPlanetInfoData[i].mColor;
-		}
 
 		emitter.update(deltaTime);
 
 		const auto particlesComponentMultiplier = sizeof(float) * emitter.getAliveParticlesCount();
 		ASSERT(emitter.getAliveParticlesCount() <= MAX_PARTICLES_COUNT);
 
-		emitter.sort(viewMat);
+		emitter.sort(cameraView);
 		::memcpy(particlesFinalRender.positions, emitter.getPositions(), particlesComponentMultiplier * CONST_BUFFER_QUANT_SIZE);
 		::memcpy(particlesFinalRender.timeAndStyle, emitter.getBehaviors(), particlesComponentMultiplier * CONST_BUFFER_QUANT_SIZE);
 
@@ -1137,10 +945,10 @@ public:
 		shadowReceiversUniforms.shadowMapCamera = lightView;
 		shadowReceiversUniforms.shadowMapMvp = lightProjection * lightView;
 
-		viewMat.setTranslation(vec3(0));
+		cameraView.setTranslation(vec3(0));
 		gUniformDataSky = gUniformData;
-		gUniformDataSky.mProjectView = projMat * viewMat;
-		gUniformDataSky.mCamera = viewMat;
+		gUniformDataSky.mProjectView = projection * cameraView;
+		gUniformDataSky.mCamera = cameraView;
 		gUniformDataSky.zProjection.setX(zFar / (zFar - zNear));
 		gUniformDataSky.zProjection.setY(-zFar * zNear / (zFar - zNear));
 		gUniformDataSky.zProjection.setZ(0);
@@ -1362,7 +1170,7 @@ public:
 		static HiresTimer gTimer;
 		gTimer.GetUSec(true);
 
-		#if defined(TARGET_IOS) || defined(__ANDROID__)
+		#if defined(NEED_JOYSTICK)
 		gVirtualJoystick.Draw(cmd, pCameraController, { 1.0f, 1.0f, 1.0f, 1.0f });
 		#endif
 
@@ -1420,9 +1228,9 @@ public:
 		return nullptr != pDepthBuffer;
 	}
 
-	void RecenterCameraView(const float maxDistance)
+	void recenterCameraView(const float maxDistance)
 	{
-		const vec3 lookAt = vec3{ 0 };
+		const vec3 lookAt = vec3{0};
 
 		vec3 p = pCameraController->getViewPosition();
 		vec3 d = p - lookAt;

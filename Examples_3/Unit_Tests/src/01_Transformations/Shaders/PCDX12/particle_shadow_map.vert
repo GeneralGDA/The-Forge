@@ -1,5 +1,3 @@
-#define MAX_PLANETS 20
-
 cbuffer uniformBlock : register(b0)
 {
     float4x4 mvp;

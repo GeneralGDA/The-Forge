@@ -43,12 +43,6 @@
     <None Include="..\src\01_Transformations\Shaders\PCDX12\skybox.frag">
       <Filter>Shaders\PCDX12</Filter>
     </None>
-    <None Include="..\src\01_Transformations\Shaders\PCDX12\basic.frag">
-      <Filter>Shaders\PCDX12</Filter>
-    </None>
-    <None Include="..\src\01_Transformations\Shaders\PCDX12\basic.vert">
-      <Filter>Shaders\PCDX12</Filter>
-    </None>
     <None Include="..\src\01_Transformations\Shaders\PCDX12\floor.frag">
       <Filter>Shaders\PCDX12</Filter>
     </None>
