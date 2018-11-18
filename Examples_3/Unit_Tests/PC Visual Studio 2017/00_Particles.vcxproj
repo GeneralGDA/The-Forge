@@ -34,8 +34,9 @@
     <ClInclude Include="..\src\00_Particles\00_Emitter.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\src\00_Particles\Shaders\PCDX12\floor.frag" />
+    <None Include="..\src\00_Particles\Shaders\PCDX12\floor_color_render.frag" />
     <None Include="..\src\00_Particles\Shaders\PCDX12\floor.vert" />
+    <None Include="..\src\00_Particles\Shaders\PCDX12\floor_z_only_pass.frag" />
     <None Include="..\src\00_Particles\Shaders\PCDX12\particle.frag" />
     <None Include="..\src\00_Particles\Shaders\PCDX12\particle.vert" />
     <None Include="..\src\00_Particles\Shaders\PCDX12\particle_shadow_map.frag" />

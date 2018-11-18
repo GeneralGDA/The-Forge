@@ -2,6 +2,8 @@ cbuffer uniformBlock : register(b0)
 {
     float4x4 mvp;
 	float4x4 camera;
+
+	float4 zProjection; // x <- scale, y <- bias
 };
 
 #define MAX_PARTICLES_COUNT 200

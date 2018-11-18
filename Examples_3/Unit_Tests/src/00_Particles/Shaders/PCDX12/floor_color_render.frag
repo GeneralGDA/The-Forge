@@ -3,9 +3,6 @@ cbuffer uniformBlock : register(b0)
     float4x4 mvp;
 	float4x4 camera;
 	float4 zProjection; // x <- scale, y <- bias
-    
-    float3 lightPosition;
-    float3 lightColor;
 };
 
 cbuffer shadowReceiverUniforms : register(b1)
@@ -18,13 +15,13 @@ SamplerState shadowMapSampler : register(s1);
 Texture2D shadowMapDepth : register(t1);
 Texture2D shadowMapColor : register(t2);
 
-struct VSOutput 
+struct VertexShaderOutput 
 {
 	float4 Position : SV_POSITION;
 	float4 worldSpacePosition: POSITION;
 };
 
-float4 main(VSOutput input) : SV_TARGET
+float4 main(VertexShaderOutput input) : SV_TARGET
 {
 	float4 projected = mul(shadowMapMvp, input.worldSpacePosition);
 	

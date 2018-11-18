@@ -29,9 +29,6 @@ cbuffer uniformBlock : register(b0)
     float4x4 mvp;
 	float4x4 camera;
 	float4 zProjection; // x <- scale, y <- bias
-
-    float3 lightPosition;
-    float3 lightColor;
 };
 
 struct VSOutput {

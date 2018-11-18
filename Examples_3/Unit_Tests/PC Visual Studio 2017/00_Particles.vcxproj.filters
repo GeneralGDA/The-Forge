@@ -25,9 +25,6 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\src\00_Particles\Shaders\PCDX12\floor.frag">
-      <Filter>Shaders\PCDX12</Filter>
-    </None>
     <None Include="..\src\00_Particles\Shaders\PCDX12\floor.vert">
       <Filter>Shaders\PCDX12</Filter>
     </None>
@@ -47,6 +44,12 @@
       <Filter>Shaders\PCDX12</Filter>
     </None>
     <None Include="..\src\00_Particles\Shaders\PCDX12\skybox.vert">
+      <Filter>Shaders\PCDX12</Filter>
+    </None>
+    <None Include="..\src\00_Particles\Shaders\PCDX12\floor_color_render.frag">
+      <Filter>Shaders\PCDX12</Filter>
+    </None>
+    <None Include="..\src\00_Particles\Shaders\PCDX12\floor_z_only_pass.frag">
       <Filter>Shaders\PCDX12</Filter>
     </None>
   </ItemGroup>
