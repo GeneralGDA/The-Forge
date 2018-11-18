@@ -58,3 +58,5 @@ Art/
 # Nuget packages
 Tools/ShaderBuildCommand/packages/
 **/ThirdParty/OpenSource/hlslparser/Ext/ShaderTranslator/packages/
+Examples_3/Unit_Tests/PC Visual Studio 2017/Unit_Tests.suo
+Examples_3/Unit_Tests/PC Visual Studio 2017/Unit_Tests.sdf
