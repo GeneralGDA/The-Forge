@@ -54,6 +54,9 @@ struct ParticlesUniform final
 	float particlesLifeLength;
 };
 
+namespace
+{
+
 const auto PRE_RENDERED_FRAMES_COUNT = 3u;
 
 const auto SKY_BOX_FACES_COUNT = 6;
@@ -67,6 +70,8 @@ const char* skyBoxFaceImageFileNames[SKY_BOX_FACES_COUNT] =
 	"Skybox2_front5.png",
 	"Skybox2_back6.png",
 };
+
+} // namespace
 
 const char* pszBases[] =
 {
@@ -86,6 +91,8 @@ ICameraController* cameraController = nullptr;
 class Particles final : public IApp
 {
 private:
+
+	HiresTimer timer;
 
 	Renderer* renderer = nullptr;
 
@@ -118,7 +125,7 @@ private:
 
 	#if defined(NEED_JOYSTICK)
 	VirtualJoystickUI gVirtualJoystick;
-	#endif
+	#endif // #if defined(NEED_JOYSTICK)
 
 	TextDrawDesc frameTimeDraw{/*font: */0, /*color: */0xff000000, /*size: */18};
 	UIApp userInterface;
@@ -233,6 +240,7 @@ private:
 
 		RootSignatureDesc rootDescription = {};
 		rootDescription.mStaticSamplerCount = _countof(shadowReceiversSamplersNames);
+		ASSERT(_countof(shadowReceiversSamplersNames) == _countof(shadowReceiversSamplers));
 		rootDescription.ppStaticSamplerNames = shadowReceiversSamplersNames;
 		rootDescription.ppStaticSamplers = shadowReceiversSamplers;
 		rootDescription.mShaderCount = _countof(shadowReceiversShaders);
@@ -430,6 +438,7 @@ private:
 
 		RootSignatureDesc rootDescription = {};
 		rootDescription.mStaticSamplerCount = _countof(staticSamplersNames);
+		ASSERT(_countof(staticSamplersNames) == _countof(staticSamplers));
 		rootDescription.ppStaticSamplerNames = staticSamplersNames;
 		rootDescription.ppStaticSamplers = staticSamplers;
 		rootDescription.mShaderCount = _countof(particlesShaders);
@@ -507,6 +516,134 @@ private:
 		prepareParticlesShadowMapStuff();
 	}
 
+	void prepareSkyBoxVertexBuffer()
+	{
+		const float skyBoxPoints[] =
+		{
+			+10.0f, -10.0f, -10.0f, 6.0f, // -z
+			-10.0f, -10.0f, -10.0f, 6.0f,
+			-10.0f, +10.0f, -10.0f, 6.0f,
+			-10.0f, +10.0f, -10.0f, 6.0f,
+			+10.0f, +10.0f, -10.0f, 6.0f,
+			+10.0f, -10.0f, -10.0f, 6.0f,
+
+			-10.0f, -10.0f, +10.0f, 2.0f,  //-x
+			-10.0f, -10.0f, -10.0f, 2.0f,
+			-10.0f, +10.0f, -10.0f, 2.0f,
+			-10.0f, +10.0f, -10.0f, 2.0f,
+			-10.0f, +10.0f, +10.0f, 2.0f,
+			-10.0f, -10.0f, +10.0f, 2.0f,
+
+			+10.0f, -10.0f, -10.0f, 1.0f, //+x
+			+10.0f, -10.0f, +10.0f, 1.0f,
+			+10.0f, +10.0f, +10.0f, 1.0f,
+			+10.0f, +10.0f, +10.0f, 1.0f,
+			+10.0f, +10.0f, -10.0f, 1.0f,
+			+10.0f, -10.0f, -10.0f, 1.0f,
+
+			-10.0f, -10.0f, +10.0f, 5.0f,  // +z
+			-10.0f, +10.0f, +10.0f, 5.0f,
+			+10.0f, +10.0f, +10.0f, 5.0f,
+			+10.0f, +10.0f, +10.0f, 5.0f,
+			+10.0f, -10.0f, +10.0f, 5.0f,
+			-10.0f, -10.0f, +10.0f, 5.0f,
+
+			-10.0f, +10.0f, -10.0f, 3.0f,  //+y
+			+10.0f, +10.0f, -10.0f, 3.0f,
+			+10.0f, +10.0f, +10.0f, 3.0f,
+			+10.0f, +10.0f, +10.0f, 3.0f,
+			-10.0f, +10.0f, +10.0f, 3.0f,
+			-10.0f, +10.0f, -10.0f, 3.0f,
+
+			+10.0f, -10.0f, +10.0f, 4.0f,  //-y
+			+10.0f, -10.0f, -10.0f, 4.0f,
+			-10.0f, -10.0f, -10.0f, 4.0f,
+			-10.0f, -10.0f, -10.0f, 4.0f,
+			-10.0f, -10.0f, +10.0f, 4.0f,
+			+10.0f, -10.0f, +10.0f, 4.0f,
+		};
+
+		const auto FLOATS_PER_SKY_BOX_VERTEX = 4;
+		
+		BufferLoadDesc skyBoxVertexBufferDescription = {};
+		skyBoxVertexBufferDescription.mDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
+		skyBoxVertexBufferDescription.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_GPU_ONLY;
+		skyBoxVertexBufferDescription.mDesc.mSize = sizeof(skyBoxPoints);
+		skyBoxVertexBufferDescription.mDesc.mVertexStride = sizeof(float) * FLOATS_PER_SKY_BOX_VERTEX;
+		skyBoxVertexBufferDescription.pData = skyBoxPoints;
+		skyBoxVertexBufferDescription.ppBuffer = &skyBoxVertexBuffer;
+		addResource(&skyBoxVertexBufferDescription);
+	}
+
+	void prepareSkyBoxRootSignature()
+	{
+		ASSERT(nullptr != skyBoxShader);
+		ASSERT(nullptr != skyBoxSampler);
+
+		Shader* shaders[] = { skyBoxShader };
+		const char* samplersNames[] = { "uSampler0" };
+		Sampler* staticSamplers[] = { skyBoxSampler };
+
+		RootSignatureDesc rootSignatureDescription = {};
+		rootSignatureDescription.mStaticSamplerCount = _countof(samplersNames);
+		ASSERT(_countof(samplersNames) == _countof(staticSamplers));
+		rootSignatureDescription.ppStaticSamplerNames = samplersNames;
+		rootSignatureDescription.ppStaticSamplers = staticSamplers;
+		rootSignatureDescription.mShaderCount = _countof(shaders);
+		rootSignatureDescription.ppShaders = shaders;
+		addRootSignature(renderer, &rootSignatureDescription, &skyBoxRootSignature);
+	}
+
+	void prepareSkyBoxRasterizerState()
+	{
+		RasterizerStateDesc skyBoxRasterizerStateDescription = {};
+		skyBoxRasterizerStateDescription.mCullMode = CULL_MODE_NONE;
+		addRasterizerState(renderer, &skyBoxRasterizerStateDescription, &skyBoxRasterizerState);
+	}
+
+	void prepareSkyBoxSampler()
+	{
+		SamplerDesc samplerDesc =
+		{
+			FILTER_LINEAR, FILTER_LINEAR, MIPMAP_MODE_NEAREST,
+			ADDRESS_MODE_CLAMP_TO_EDGE, ADDRESS_MODE_CLAMP_TO_EDGE, ADDRESS_MODE_CLAMP_TO_EDGE
+		};
+		addSampler(renderer, &samplerDesc, &skyBoxSampler);
+	}
+
+	void loadSkyBoxTextures()
+	{
+		ASSERT(SKY_BOX_FACES_COUNT == _countof(skyBoxTextures));
+		ASSERT(SKY_BOX_FACES_COUNT == _countof(skyBoxFaceImageFileNames));
+		for (int i = 0; i < SKY_BOX_FACES_COUNT; ++i)
+		{
+			TextureLoadDesc textureDesc = {};
+			textureDesc.mRoot = FSR_Textures;
+			textureDesc.mUseMipmaps = true;
+			textureDesc.pFilename = skyBoxFaceImageFileNames[i];
+			textureDesc.ppTexture = &skyBoxTextures[i];
+			addResource(&textureDesc, true);
+		}
+	}
+
+	void prepareSkyBoxShaders()
+	{
+		ShaderLoadDesc skyShader = {};
+		skyShader.mStages[0] = { "skybox.vert", nullptr, 0, FSR_SrcShaders };
+		skyShader.mStages[1] = { "skybox.frag", nullptr, 0, FSR_SrcShaders };
+		addShader(renderer, &skyShader, &skyBoxShader);
+	}
+
+	void prepareSkyBoxResources()
+	{
+		prepareSkyBoxShaders();
+		loadSkyBoxTextures();
+		prepareSkyBoxSampler();
+		prepareSkyBoxRootSignature();
+		prepareSkyBoxRasterizerState();
+		prepareSkyBoxVertexBuffer();
+	}
+
 	static constexpr float SHADOW_MAP_Z_NEAR = 0.1f;
 	static constexpr float SHADOW_MAP_Z_FAR = 100.0f;
 
@@ -562,112 +699,19 @@ public:
 			LOGERRORF("Could not initialize Virtual Joystick.");
 			return false;
 		}
-		#endif
+		#endif // #if defined(NEED_JOYSTICK)
 
-		{
 		prepareFloorResources();
+
 		prepareParticlesResources();
-		}
-
-		ShaderLoadDesc skyShader = {};
-		skyShader.mStages[0] = { "skybox.vert", nullptr, 0, FSR_SrcShaders };
-		skyShader.mStages[1] = { "skybox.frag", nullptr, 0, FSR_SrcShaders };
-		addShader(renderer, &skyShader, &skyBoxShader);
-
-		ASSERT(SKY_BOX_FACES_COUNT == _countof(skyBoxTextures));
-		ASSERT(SKY_BOX_FACES_COUNT == _countof(skyBoxFaceImageFileNames));
-		for (int i = 0; i < SKY_BOX_FACES_COUNT; ++i)
-		{
-			TextureLoadDesc textureDesc = {};
-			textureDesc.mRoot = FSR_Textures;
-			textureDesc.mUseMipmaps = true;
-			textureDesc.pFilename = skyBoxFaceImageFileNames[i];
-			textureDesc.ppTexture = &skyBoxTextures[i];
-			addResource(&textureDesc, true);
-		}
-
-		SamplerDesc samplerDesc = 
-		{
-			FILTER_LINEAR, FILTER_LINEAR, MIPMAP_MODE_NEAREST,
-			ADDRESS_MODE_CLAMP_TO_EDGE, ADDRESS_MODE_CLAMP_TO_EDGE, ADDRESS_MODE_CLAMP_TO_EDGE
-		};
-		addSampler(renderer, &samplerDesc, &skyBoxSampler);
-
-		Shader* shaders[] = { skyBoxShader };
-		const char* pStaticSamplersNames[] = { "uSampler0" };
-		Sampler* staticSamplers[] = { skyBoxSampler };
-		RootSignatureDesc rootDesc = {};
-		rootDesc.mStaticSamplerCount = _countof(pStaticSamplersNames);
-		rootDesc.ppStaticSamplerNames = pStaticSamplersNames;
-		rootDesc.ppStaticSamplers = staticSamplers;
-		rootDesc.mShaderCount = _countof(shaders);
-		rootDesc.ppShaders = shaders;
-		addRootSignature(renderer, &rootDesc, &skyBoxRootSignature);
-
-		RasterizerStateDesc skyBoxRasterizerStateDescription = {};
-		skyBoxRasterizerStateDescription.mCullMode = CULL_MODE_NONE;
-		addRasterizerState(renderer, &skyBoxRasterizerStateDescription, &skyBoxRasterizerState);
+		
+		prepareSkyBoxResources();
 
 		DepthStateDesc depthTestEnabledStateDescription = {};
 		depthTestEnabledStateDescription.mDepthTest = true;
 		depthTestEnabledStateDescription.mDepthWrite = true;
 		depthTestEnabledStateDescription.mDepthFunc = CMP_LEQUAL;
 		addDepthState(renderer, &depthTestEnabledStateDescription, &depthTestEnabledState);
-
-		float skyBoxPoints[] = 
-		{
-			+10.0f, -10.0f, -10.0f, 6.0f, // -z
-			-10.0f, -10.0f, -10.0f, 6.0f,
-			-10.0f, +10.0f, -10.0f, 6.0f,
-			-10.0f, +10.0f, -10.0f, 6.0f,
-			+10.0f, +10.0f, -10.0f, 6.0f,
-			+10.0f, -10.0f, -10.0f, 6.0f,
-								    
-			-10.0f, -10.0f, +10.0f, 2.0f,  //-x
-			-10.0f, -10.0f, -10.0f, 2.0f,
-			-10.0f, +10.0f, -10.0f, 2.0f,
-			-10.0f, +10.0f, -10.0f, 2.0f,
-			-10.0f, +10.0f, +10.0f, 2.0f,
-			-10.0f, -10.0f, +10.0f, 2.0f,
-								    
-			+10.0f, -10.0f, -10.0f, 1.0f, //+x
-			+10.0f, -10.0f, +10.0f, 1.0f,
-			+10.0f, +10.0f, +10.0f, 1.0f,
-			+10.0f, +10.0f, +10.0f, 1.0f,
-			+10.0f, +10.0f, -10.0f, 1.0f,
-			+10.0f, -10.0f, -10.0f, 1.0f,
-
-			-10.0f, -10.0f, +10.0f, 5.0f,  // +z
-			-10.0f, +10.0f, +10.0f, 5.0f,
-			+10.0f, +10.0f, +10.0f, 5.0f,
-			+10.0f, +10.0f, +10.0f, 5.0f,
-			+10.0f, -10.0f, +10.0f, 5.0f,
-			-10.0f, -10.0f, +10.0f, 5.0f,
-
-			-10.0f, +10.0f, -10.0f, 3.0f,  //+y
-			+10.0f, +10.0f, -10.0f, 3.0f,
-			+10.0f, +10.0f, +10.0f, 3.0f,
-			+10.0f, +10.0f, +10.0f, 3.0f,
-			-10.0f, +10.0f, +10.0f, 3.0f,
-			-10.0f, +10.0f, -10.0f, 3.0f,
-
-			+10.0f, -10.0f, +10.0f, 4.0f,  //-y
-			+10.0f, -10.0f, -10.0f, 4.0f,
-			-10.0f, -10.0f, -10.0f, 4.0f,
-			-10.0f, -10.0f, -10.0f, 4.0f,
-			-10.0f, -10.0f, +10.0f, 4.0f,
-			+10.0f, -10.0f, +10.0f, 4.0f,
-		};
-
-		uint64_t skyBoxVertexDataSize = 4 * 6 * SKY_BOX_FACES_COUNT * sizeof(float);
-		BufferLoadDesc skyboxVbDesc = {};
-		skyboxVbDesc.mDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
-		skyboxVbDesc.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_GPU_ONLY;
-		skyboxVbDesc.mDesc.mSize = skyBoxVertexDataSize;
-		skyboxVbDesc.mDesc.mVertexStride = sizeof(float) * 4;
-		skyboxVbDesc.pData = skyBoxPoints;
-		skyboxVbDesc.ppBuffer = &skyBoxVertexBuffer;
-		addResource(&skyboxVbDesc);
 
 		BufferLoadDesc commonUniformBufferDescription = {};
 		commonUniformBufferDescription.mDesc.mDescriptors = DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -682,6 +726,7 @@ public:
 		{
 			commonUniformBufferDescription.ppBuffer = &cameraViewProjectionUniformBuffers[i];
 			addResource(&commonUniformBufferDescription);
+			
 			commonUniformBufferDescription.ppBuffer = &skyBoxUniformBuffers[i];
 			addResource(&commonUniformBufferDescription);
 		}
@@ -695,14 +740,14 @@ public:
 
 		userInterface.LoadFont("TitilliumText/TitilliumText-Bold.otf", FSR_Builtin_Fonts);
 
-		const CameraMotionParameters cmp { 160.0f, 600.0f, 200.0f };
-		const vec3 camPos { 48.0f, 48.0f, 20.0f };
+		const CameraMotionParameters cameraMotionParameters { 160.0f, 600.0f, 200.0f };
+		const vec3 cameraPosition { 48.0f, 48.0f, 20.0f };
 		const vec3 lookAt { 0 };
 
-		cameraController = createFpsCameraController(camPos, lookAt);
+		cameraController = createFpsCameraController(cameraPosition, lookAt);
 		requestMouseCapture(true);
 
-		cameraController->setMotionParameters(cmp);
+		cameraController->setMotionParameters(cameraMotionParameters);
 
 		InputSystem::RegisterInputEvent(cameraInputEvent);
 
@@ -719,13 +764,13 @@ public:
 
 		#if defined(NEED_JOYSTICK)
 		gVirtualJoystick.Exit();
-		#endif
+		#endif // #if defined(NEED_JOYSTICK)
 
 		userInterface.Exit();
 
 		ASSERT(PRE_RENDERED_FRAMES_COUNT == _countof(cameraViewProjectionUniformBuffers));
 		ASSERT(PRE_RENDERED_FRAMES_COUNT == _countof(skyBoxUniformBuffers));
-		for (uint32_t i = 0; i < PRE_RENDERED_FRAMES_COUNT; ++i)
+		for (auto i = 0u; i < PRE_RENDERED_FRAMES_COUNT; ++i)
 		{
 			removeResource(cameraViewProjectionUniformBuffers[i]);
 			removeResource(skyBoxUniformBuffers[i]);
@@ -827,7 +872,7 @@ public:
 		{
 			return false;
 		}
-		#endif
+		#endif // #if defined(NEED_JOYSTICK)
 
 		ClearValue maxClearValue;
 		maxClearValue.r = 1.0f;
@@ -922,7 +967,7 @@ public:
 		pipelineSettings.pVertexLayout = &particleVertexLayout;
 		addPipeline(renderer, &pipelineSettings, &particlesPipeline);
 
-		// layout and pipeline for skybox draw
+		// layout and pipeline for sky box draw
 		vertexLayout = {};
 		vertexLayout.mAttribCount = 1;
 		vertexLayout.mAttribs[0].mSemantic = SEMANTIC_POSITION;
@@ -970,13 +1015,13 @@ public:
 
 	void Unload() override
 	{
-		waitForFences(commandQueue, PRE_RENDERED_FRAMES_COUNT, frameCompleteFences, /*signel: */true);
+		waitForFences(commandQueue, PRE_RENDERED_FRAMES_COUNT, frameCompleteFences, /*signal: */true);
 
 		userInterface.Unload();
 
 		#if defined(NEED_JOYSTICK)
 		gVirtualJoystick.Unload();
-		#endif
+		#endif // #if defined(NEED_JOYSTICK)
 
 		removePipeline(renderer, skyBoxPipeline);
 		
@@ -1061,82 +1106,82 @@ private:
 		{
 			// render target barrier
 			{
-			TextureBarrier shadowMapDepthPassBarrier[] =
-			{
-				{ shadowMapDepth->pTexture, RESOURCE_STATE_RENDER_TARGET },
-				{ shadowMapColor->pTexture, RESOURCE_STATE_RENDER_TARGET },
-				{ shadowMapDepthBuffer->pTexture, RESOURCE_STATE_DEPTH_WRITE },
-			};
-			cmdResourceBarrier(cmd, 0, nullptr, _countof(shadowMapDepthPassBarrier), shadowMapDepthPassBarrier, false);
+				TextureBarrier shadowMapDepthPassBarrier[] =
+				{
+					{ shadowMapDepth->pTexture, RESOURCE_STATE_RENDER_TARGET },
+					{ shadowMapColor->pTexture, RESOURCE_STATE_RENDER_TARGET },
+					{ shadowMapDepthBuffer->pTexture, RESOURCE_STATE_DEPTH_WRITE },
+				};
+				cmdResourceBarrier(cmd, 0, nullptr, _countof(shadowMapDepthPassBarrier), shadowMapDepthPassBarrier, false);
 			}
 
 			// render target setup
 			{
-			LoadActionsDesc shadowMapLoadActions = {};
-			for (int i = 0; i < SHADOW_MAP_BUFFERS_COUNT; ++i)
-			{
-				shadowMapLoadActions.mLoadActionsColor[i] = LOAD_ACTION_CLEAR;
-				shadowMapLoadActions.mClearColorValues[i].r = 1.0f;
-				shadowMapLoadActions.mClearColorValues[i].g = 1.0f;
-				shadowMapLoadActions.mClearColorValues[i].b = 1.0f;
-				shadowMapLoadActions.mClearColorValues[i].a = 1.0f;
-			}
-			shadowMapLoadActions.mLoadActionDepth = LOAD_ACTION_CLEAR;
-			shadowMapLoadActions.mClearDepth.depth = 1.0f;
-			shadowMapLoadActions.mClearDepth.stencil = 0;
+				LoadActionsDesc shadowMapLoadActions = {};
+				for (int i = 0; i < SHADOW_MAP_BUFFERS_COUNT; ++i)
+				{
+					shadowMapLoadActions.mLoadActionsColor[i] = LOAD_ACTION_CLEAR;
+					shadowMapLoadActions.mClearColorValues[i].r = 1.0f;
+					shadowMapLoadActions.mClearColorValues[i].g = 1.0f;
+					shadowMapLoadActions.mClearColorValues[i].b = 1.0f;
+					shadowMapLoadActions.mClearColorValues[i].a = 1.0f;
+				}
+				shadowMapLoadActions.mLoadActionDepth = LOAD_ACTION_CLEAR;
+				shadowMapLoadActions.mClearDepth.depth = 1.0f;
+				shadowMapLoadActions.mClearDepth.stencil = 0;
 
-			RenderTarget* renderTargets[SHADOW_MAP_BUFFERS_COUNT] = { shadowMapColor, shadowMapDepth, };
-			cmdBindRenderTargets(cmd, _countof(renderTargets), renderTargets, shadowMapDepthBuffer, &shadowMapLoadActions, nullptr, nullptr, -1, -1);
-			cmdSetViewport(cmd, 0.0f, 0.0f, static_cast<float>(shadowMapDepth->mDesc.mWidth), static_cast<float>(shadowMapDepth->mDesc.mHeight), 0.0f, 1.0f);
-			cmdSetScissor(cmd, 0, 0, shadowMapDepth->mDesc.mWidth, shadowMapDepth->mDesc.mHeight);
+				RenderTarget* renderTargets[SHADOW_MAP_BUFFERS_COUNT] = { shadowMapColor, shadowMapDepth, };
+				cmdBindRenderTargets(cmd, _countof(renderTargets), renderTargets, shadowMapDepthBuffer, &shadowMapLoadActions, nullptr, nullptr, -1, -1);
+				cmdSetViewport(cmd, 0.0f, 0.0f, static_cast<float>(shadowMapDepth->mDesc.mWidth), static_cast<float>(shadowMapDepth->mDesc.mHeight), 0.0f, 1.0f);
+				cmdSetScissor(cmd, 0, 0, shadowMapDepth->mDesc.mWidth, shadowMapDepth->mDesc.mHeight);
 			}
 
 			// floor z-only
 			{
-			DescriptorData floorDrawParameters[MAX_DESCRIPTORS_COUNT] = {};
+				DescriptorData floorDrawParameters[MAX_DESCRIPTORS_COUNT] = {};
 
-			auto descriptorCount = 0u;
+				auto descriptorCount = 0u;
 
-			floorDrawParameters[descriptorCount].pName = "ProjectionUniforms";
-			floorDrawParameters[descriptorCount++].ppBuffers = &shadowMapUniformsBuffers[preRenderedFrameIndex];
+				floorDrawParameters[descriptorCount].pName = "ProjectionUniforms";
+				floorDrawParameters[descriptorCount++].ppBuffers = &shadowMapUniformsBuffers[preRenderedFrameIndex];
 
-			ASSERT(descriptorCount <= _countof(floorDrawParameters));
+				ASSERT(descriptorCount <= _countof(floorDrawParameters));
 
-			cmdBeginDebugMarker(cmd, 1, 1, 1, "Draw floor");
+				cmdBeginDebugMarker(cmd, 1, 1, 1, "Draw floor");
 
-			cmdBindPipeline(cmd, floorShadowMapDepthOnlyPassPipeline);
+				cmdBindPipeline(cmd, floorShadowMapDepthOnlyPassPipeline);
 
-			cmdBindDescriptors(cmd, floorRootSignature, descriptorCount, floorDrawParameters);
-			cmdBindVertexBuffer(cmd, /*buffer count: */1, &floorVertices,  /*offsets: */nullptr);
+				cmdBindDescriptors(cmd, floorRootSignature, descriptorCount, floorDrawParameters);
+				cmdBindVertexBuffer(cmd, /*buffer count: */1, &floorVertices,  /*offsets: */nullptr);
 
-			cmdDraw(cmd, FLOOR_VERTEX_COUNT, /*first vertex: */0);
+				cmdDraw(cmd, FLOOR_VERTEX_COUNT, /*first vertex: */0);
 
-			cmdEndDebugMarker(cmd);
+				cmdEndDebugMarker(cmd);
 			}
 
 			// particles shadow map
 			{
-			TextureBarrier zReadBarrier[] =
-			{
-				{ shadowMapDepthBuffer->pTexture, RESOURCE_STATE_DEPTH_READ | RESOURCE_STATE_SHADER_RESOURCE },
-			};
-			cmdResourceBarrier(cmd, 0, nullptr, _countof(zReadBarrier), zReadBarrier, false);
+				TextureBarrier zReadBarrier[] =
+				{
+					{ shadowMapDepthBuffer->pTexture, RESOURCE_STATE_DEPTH_READ | RESOURCE_STATE_SHADER_RESOURCE },
+				};
+				cmdResourceBarrier(cmd, 0, nullptr, _countof(zReadBarrier), zReadBarrier, false);
 
-			DescriptorData particlesShadowMapDescriptors[MAX_DESCRIPTORS_COUNT] = {};
-			int descriptorCount = 0;
-			particlesShadowMapDescriptors[descriptorCount].pName = "ProjectionUniforms";
-			particlesShadowMapDescriptors[descriptorCount++].ppBuffers = &shadowMapUniformsBuffers[preRenderedFrameIndex];
-			particlesShadowMapDescriptors[descriptorCount].pName = "particlesInstances";
-			particlesShadowMapDescriptors[descriptorCount++].ppBuffers = &particlesPerInstanceDataShadowMap[preRenderedFrameIndex];
-			particlesShadowMapDescriptors[descriptorCount].pName = "image";
-			particlesShadowMapDescriptors[descriptorCount++].ppTextures = &particlesTexture;
-			particlesShadowMapDescriptors[descriptorCount].pName = "depthBuffer";
-			particlesShadowMapDescriptors[descriptorCount++].ppTextures = &shadowMapDepthBuffer->pTexture;
+				DescriptorData particlesShadowMapDescriptors[MAX_DESCRIPTORS_COUNT] = {};
+				int descriptorCount = 0;
+				particlesShadowMapDescriptors[descriptorCount].pName = "ProjectionUniforms";
+				particlesShadowMapDescriptors[descriptorCount++].ppBuffers = &shadowMapUniformsBuffers[preRenderedFrameIndex];
+				particlesShadowMapDescriptors[descriptorCount].pName = "particlesInstances";
+				particlesShadowMapDescriptors[descriptorCount++].ppBuffers = &particlesPerInstanceDataShadowMap[preRenderedFrameIndex];
+				particlesShadowMapDescriptors[descriptorCount].pName = "image";
+				particlesShadowMapDescriptors[descriptorCount++].ppTextures = &particlesTexture;
+				particlesShadowMapDescriptors[descriptorCount].pName = "depthBuffer";
+				particlesShadowMapDescriptors[descriptorCount++].ppTextures = &shadowMapDepthBuffer->pTexture;
 
-			cmdBindPipeline(cmd, shadowMapParticlesPassPipeline);			
-			cmdBindDescriptors(cmd, particlesRootSignature, descriptorCount, particlesShadowMapDescriptors);
-			cmdBindVertexBuffer(cmd, 1, &particleVertices, nullptr);
-			cmdDrawInstanced(cmd, particleVertexCount, 0, emitter.getAliveParticlesCount(), 0);
+				cmdBindPipeline(cmd, shadowMapParticlesPassPipeline);			
+				cmdBindDescriptors(cmd, particlesRootSignature, descriptorCount, particlesShadowMapDescriptors);
+				cmdBindVertexBuffer(cmd, 1, &particleVertices, nullptr);
+				cmdDrawInstanced(cmd, particleVertexCount, 0, emitter.getAliveParticlesCount(), 0);
 			}
 
 			cmdBindRenderTargets(cmd, 0, nullptr, nullptr, nullptr, nullptr, nullptr, -1, -1);
@@ -1153,29 +1198,29 @@ private:
 
 		// render target barrier
 		{
-		TextureBarrier barriers[] = 
-		{
-			{ frameBufferRenderTarget->pTexture, RESOURCE_STATE_RENDER_TARGET },
-			{ depthBuffer->pTexture, RESOURCE_STATE_DEPTH_WRITE },
-		};
-		cmdResourceBarrier(cmd, 0, nullptr, _countof(barriers), barriers, false);
+			TextureBarrier barriers[] = 
+			{
+				{ frameBufferRenderTarget->pTexture, RESOURCE_STATE_RENDER_TARGET },
+				{ depthBuffer->pTexture, RESOURCE_STATE_DEPTH_WRITE },
+			};
+			cmdResourceBarrier(cmd, 0, nullptr, _countof(barriers), barriers, false);
 		}
 
 		// render target setup
 		{
-		LoadActionsDesc loadActions = {};
-		loadActions.mLoadActionsColor[0] = LOAD_ACTION_CLEAR;
-		loadActions.mClearColorValues[0].r = 1.0f;
-		loadActions.mClearColorValues[0].g = 1.0f;
-		loadActions.mClearColorValues[0].b = 0.0f;
-		loadActions.mClearColorValues[0].a = 0.0f;
-		loadActions.mLoadActionDepth = LOAD_ACTION_CLEAR;
-		loadActions.mClearDepth.depth = 1.0f;
-		loadActions.mClearDepth.stencil = 0;
+			LoadActionsDesc loadActions = {};
+			loadActions.mLoadActionsColor[0] = LOAD_ACTION_CLEAR;
+			loadActions.mClearColorValues[0].r = 1.0f;
+			loadActions.mClearColorValues[0].g = 1.0f;
+			loadActions.mClearColorValues[0].b = 0.0f;
+			loadActions.mClearColorValues[0].a = 0.0f;
+			loadActions.mLoadActionDepth = LOAD_ACTION_CLEAR;
+			loadActions.mClearDepth.depth = 1.0f;
+			loadActions.mClearDepth.stencil = 0;
 
-		cmdBindRenderTargets(cmd, 1, &frameBufferRenderTarget, depthBuffer, &loadActions, nullptr, nullptr, -1, -1);
-		cmdSetViewport(cmd, 0.0f, 0.0f, static_cast<float>(frameBufferRenderTarget->mDesc.mWidth), static_cast<float>(frameBufferRenderTarget->mDesc.mHeight), 0.0f, 1.0f);
-		cmdSetScissor(cmd, 0, 0, frameBufferRenderTarget->mDesc.mWidth, frameBufferRenderTarget->mDesc.mHeight);
+			cmdBindRenderTargets(cmd, 1, &frameBufferRenderTarget, depthBuffer, &loadActions, nullptr, nullptr, -1, -1);
+			cmdSetViewport(cmd, 0.0f, 0.0f, static_cast<float>(frameBufferRenderTarget->mDesc.mWidth), static_cast<float>(frameBufferRenderTarget->mDesc.mHeight), 0.0f, 1.0f);
+			cmdSetScissor(cmd, 0, 0, frameBufferRenderTarget->mDesc.mWidth, frameBufferRenderTarget->mDesc.mHeight);
 		}
 
 		cmdBeginDebugMarker(cmd, 0, 0, 1, "draw sky box");
@@ -1368,26 +1413,26 @@ public:
 		drawScene(frameBufferRenderTarget, cmd);
 
 		cmdBeginDebugMarker(cmd, 0, 1, 0, "Draw UI");
-		static HiresTimer gTimer;
-		gTimer.GetUSec(true);
+
+		timer.GetUSec(true);
 
 		#if defined(NEED_JOYSTICK)
 		gVirtualJoystick.Draw(cmd, pCameraController, { 1.0f, 1.0f, 1.0f, 1.0f });
-		#endif
+		#endif // #if defined(NEED_JOYSTICK)
 
-		drawDebugText(cmd, /*x: */8, /*y: */15, tinystl::string::format("CPU %f ms", gTimer.GetUSecAverage() / 1000.0f), &frameTimeDraw);
+		drawDebugText(cmd, /*x: */8, /*y: */15, tinystl::string::format("CPU %f ms", timer.GetUSecAverage() / 1000.0f), &frameTimeDraw);
 		userInterface.Draw(cmd);
 		cmdBindRenderTargets(cmd, 0, nullptr, nullptr, nullptr, nullptr, nullptr, -1, -1);
 		cmdEndDebugMarker(cmd);
 
 		{
-		TextureBarrier barriers[] = { { frameBufferRenderTarget->pTexture, RESOURCE_STATE_PRESENT } };
-		cmdResourceBarrier(cmd, 0, nullptr, _countof(barriers), barriers, true);
+			TextureBarrier barriers[] = { { frameBufferRenderTarget->pTexture, RESOURCE_STATE_PRESENT } };
+			cmdResourceBarrier(cmd, 0, nullptr, _countof(barriers), barriers, true);
 		}
 		endCmd(cmd);
 
-		queueSubmit(commandQueue, 1, &cmd, frameCompleteFence, 1, &imageAcquiredSemaphore, 1, &frameCompleteSemaphore);
-		queuePresent(commandQueue, swapChain, preRenderedFrameIndex, 1, &frameCompleteSemaphore);
+		queueSubmit(commandQueue, /*command buffers count: */1, &cmd, frameCompleteFence, /*wait sem. count: */1, &imageAcquiredSemaphore, /*signal sem. count: */1, &frameCompleteSemaphore);
+		queuePresent(commandQueue, swapChain, preRenderedFrameIndex, /*wait sem. count: */1, &frameCompleteSemaphore);
 	}
 
 	tinystl::string GetName() override
@@ -1412,6 +1457,6 @@ public:
 		return nullptr != swapChain;
 	}
 
-};
+	};
 
-DEFINE_APPLICATION_MAIN(Particles)
+	DEFINE_APPLICATION_MAIN(Particles)
