@@ -68,7 +68,7 @@ Emitter::Emitter(const int _maxParticlesCount, const int _stylesCount)
 
 void Emitter::emitParticle(const int index, const float startTime)
 {
-	ASSERT(0 <= index);
+	ASSERT(0 <= index && checkedCast(particles.size()) > index);
 
 	auto& particle = particles[index];
 	particle.aliveTime = startTime;
@@ -91,11 +91,13 @@ void Emitter::removeDeadParticles()
 	particles.resize(particles.size() - dead.size());
 }
 
-void Emitter::sort(const mat4& camera)
+void Emitter::sort(const mat4& viewerFrame)
 {
+	const auto Z_AXIS = 2;
+
 	for (auto& particle : particles)
 	{
-		particle.cameraSpaceZ = dot(camera[2], vec4{particle.position, 1.0f});
+		particle.cameraSpaceZ = dot(viewerFrame[Z_AXIS], vec4{particle.position, 1.0f});
 	}
 
 	std::sort(particles.begin(), particles.end()

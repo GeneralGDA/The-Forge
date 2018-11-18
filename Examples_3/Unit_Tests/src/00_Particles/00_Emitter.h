@@ -10,6 +10,15 @@ private:
 
 	struct Particle final
 	{
+		Particle()
+			:
+			position(0),
+			cameraSpaceZ(0),
+			aliveTime(0),
+			styleNumber(0)
+		{
+		}
+
 		vec3 position;
 		
 		float cameraSpaceZ;

@@ -38,7 +38,7 @@ struct VSOutput
     float4 TexCoord : TEXCOORD;
 };
 
-SamplerState uSampler0 : register(s7);
+SamplerState skyBoxSampler : register(s7);
 
 Texture2D RightText : register(t1);
 Texture2D LeftText : register(t2);
@@ -56,36 +56,36 @@ float4 main(VSOutput input) : SV_TARGET
     {
         newtextcoord = (input.TexCoord.zy) / 20 + 0.5;
         newtextcoord = float2(1 - newtextcoord.x, 1 - newtextcoord.y);
-        return RightText.Sample(uSampler0, newtextcoord);
+        return RightText.Sample(skyBoxSampler, newtextcoord);
     }
     else if (side == 2.0f)
     {
         newtextcoord = (input.TexCoord.zy) / 20 + 0.5;
         newtextcoord = float2(newtextcoord.x, 1 - newtextcoord.y);
-        return LeftText.Sample(uSampler0, newtextcoord);
+        return LeftText.Sample(skyBoxSampler, newtextcoord);
     }
     else if (side == 4.0f)
     {
         newtextcoord = (input.TexCoord.xz) / 20 +0.5;
         newtextcoord = float2(newtextcoord.x, 1 - newtextcoord.y);
-        return BotText.Sample(uSampler0, newtextcoord);
+        return BotText.Sample(skyBoxSampler, newtextcoord);
     }
     else if (side == 5.0f)
     {
         newtextcoord = (input.TexCoord.xy) / 20 + 0.5;
         newtextcoord = float2(newtextcoord.x, 1 - newtextcoord.y);
-        return FrontText.Sample(uSampler0, newtextcoord);  
+        return FrontText.Sample(skyBoxSampler, newtextcoord);  
     }
     else if (side == 6.0f)
     {
         newtextcoord = (input.TexCoord.xy) / 20 + 0.5;
         newtextcoord = float2(1-newtextcoord.x, 1 - newtextcoord.y);
-        return BackText.Sample(uSampler0, newtextcoord);  
+        return BackText.Sample(skyBoxSampler, newtextcoord);  
     }
 	else
     {
         newtextcoord = (input.TexCoord.xz) / 20 + 0.5;
         newtextcoord = float2(newtextcoord.x, newtextcoord.y);
-        return TopText.Sample(uSampler0, newtextcoord);
+        return TopText.Sample(skyBoxSampler, newtextcoord);
     }
 }

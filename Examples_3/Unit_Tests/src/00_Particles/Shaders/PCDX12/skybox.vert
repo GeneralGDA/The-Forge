@@ -32,20 +32,21 @@ cbuffer ProjectionUniforms : register(b0)
 	float4 zProjection; // x <- scale, y <- bias
 };
 
-struct VSOutput 
+struct VertexShaderOutput 
 {
 	float4 Position : SV_POSITION;
     float4 TexCoord : TEXCOORD;
 };
 
-VSOutput main(float4 Position : POSITION)
+VertexShaderOutput main(float4 worldSpacePosition : POSITION)
 {
-	VSOutput result;
+	VertexShaderOutput result;
  
-    float4 p = float4(Position.x*9, Position.y*9, Position.z*9, 1.0);
-    float4x4 m =  mvp;
-    p = mul(m,p);
-    result.Position = p.xyww;
-    result.TexCoord = float4(Position.x, Position.y, Position.z,Position.w);
+    float4 projected = float4(worldSpacePosition.xyz * 9.0, 1.0);
+    projected = mul(mvp, projected);
+
+    result.Position = projected.xyww;
+    result.TexCoord = worldSpacePosition;
+
 	return result;
 }

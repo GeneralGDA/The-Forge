@@ -46,6 +46,15 @@ const int CONST_BUFFER_QUANT_SIZE = 4;
 
 struct ParticlesUniform final
 {
+	ParticlesUniform()
+		: 
+		positions{},
+		timeAndStyle{},
+		colorAndSizeScale{},
+		particlesLifeLength(0)
+	{
+	}
+
 	float positions[CONST_BUFFER_QUANT_SIZE * MAX_PARTICLES_COUNT];
 	float timeAndStyle[CONST_BUFFER_QUANT_SIZE * MAX_PARTICLES_COUNT];
 
@@ -56,8 +65,6 @@ struct ParticlesUniform final
 
 namespace
 {
-
-const auto PRE_RENDERED_FRAMES_COUNT = 3u;
 
 const auto SKY_BOX_FACES_COUNT = 6;
 
@@ -86,11 +93,18 @@ const char* pszBases[] =
 	"",									// FSR_OtherFiles
 };
 
+namespace
+{
+
 ICameraController* cameraController = nullptr;
+
+} // namespace
 
 class Particles final : public IApp
 {
 private:
+
+	static const unsigned PRE_RENDERED_FRAMES_COUNT = 3u;
 
 	HiresTimer timer;
 
@@ -132,13 +146,10 @@ private:
 
 	LogManager logManager;
 
-	static const int FLOOR_VERTEX_COUNT = 6;
-	static const int SHADOW_MAP_WIDTH = 1024;
-	static const int SHADOW_MAP_HEIGHT = 1024;
-
 	RenderTarget* depthBuffer = nullptr;
 	RenderTarget* shadowMapDepthBuffer = nullptr;
 
+	static const int FLOOR_VERTEX_COUNT = 6;
 	Shader* floorShader = nullptr;
 	Shader* floorDepthOnlyShader = nullptr;
 	Buffer* floorVertices = nullptr;
@@ -162,6 +173,8 @@ private:
 	Sampler* particleImageSampler = nullptr;
 	RootSignature* particlesRootSignature = nullptr;
 
+	static const int SHADOW_MAP_WIDTH = 1024;
+	static const int SHADOW_MAP_HEIGHT = 1024;
 	static const int SHADOW_MAP_BUFFERS_COUNT = 2;
 	RenderTarget* shadowMapDepth = nullptr;
 	RenderTarget* shadowMapColor = nullptr;
@@ -516,54 +529,57 @@ private:
 		prepareParticlesShadowMapStuff();
 	}
 
+	static const int FLOATS_PER_SKY_BOX_VERTEX = 4;
+	static const int SKY_BOX_VERTEX_COUNT = 36;
+
 	void prepareSkyBoxVertexBuffer()
 	{
 		const float skyBoxPoints[] =
 		{
-			+10.0f, -10.0f, -10.0f, 6.0f, // -z
-			-10.0f, -10.0f, -10.0f, 6.0f,
-			-10.0f, +10.0f, -10.0f, 6.0f,
-			-10.0f, +10.0f, -10.0f, 6.0f,
-			+10.0f, +10.0f, -10.0f, 6.0f,
-			+10.0f, -10.0f, -10.0f, 6.0f,
-
-			-10.0f, -10.0f, +10.0f, 2.0f,  //-x
-			-10.0f, -10.0f, -10.0f, 2.0f,
-			-10.0f, +10.0f, -10.0f, 2.0f,
-			-10.0f, +10.0f, -10.0f, 2.0f,
-			-10.0f, +10.0f, +10.0f, 2.0f,
-			-10.0f, -10.0f, +10.0f, 2.0f,
-
-			+10.0f, -10.0f, -10.0f, 1.0f, //+x
-			+10.0f, -10.0f, +10.0f, 1.0f,
-			+10.0f, +10.0f, +10.0f, 1.0f,
-			+10.0f, +10.0f, +10.0f, 1.0f,
-			+10.0f, +10.0f, -10.0f, 1.0f,
-			+10.0f, -10.0f, -10.0f, 1.0f,
-
-			-10.0f, -10.0f, +10.0f, 5.0f,  // +z
-			-10.0f, +10.0f, +10.0f, 5.0f,
-			+10.0f, +10.0f, +10.0f, 5.0f,
-			+10.0f, +10.0f, +10.0f, 5.0f,
-			+10.0f, -10.0f, +10.0f, 5.0f,
-			-10.0f, -10.0f, +10.0f, 5.0f,
-
-			-10.0f, +10.0f, -10.0f, 3.0f,  //+y
-			+10.0f, +10.0f, -10.0f, 3.0f,
-			+10.0f, +10.0f, +10.0f, 3.0f,
-			+10.0f, +10.0f, +10.0f, 3.0f,
-			-10.0f, +10.0f, +10.0f, 3.0f,
-			-10.0f, +10.0f, -10.0f, 3.0f,
-
-			+10.0f, -10.0f, +10.0f, 4.0f,  //-y
-			+10.0f, -10.0f, -10.0f, 4.0f,
-			-10.0f, -10.0f, -10.0f, 4.0f,
-			-10.0f, -10.0f, -10.0f, 4.0f,
-			-10.0f, -10.0f, +10.0f, 4.0f,
-			+10.0f, -10.0f, +10.0f, 4.0f,
+			+10.0f, -10.0f, -10.0f,  6.0f, // -z
+			-10.0f, -10.0f, -10.0f,  6.0f,
+			-10.0f, +10.0f, -10.0f,  6.0f,
+			-10.0f, +10.0f, -10.0f,  6.0f,
+			+10.0f, +10.0f, -10.0f,  6.0f,
+			+10.0f, -10.0f, -10.0f,  6.0f,
+									 
+			-10.0f, -10.0f, +10.0f,  2.0f,  //-x
+			-10.0f, -10.0f, -10.0f,  2.0f,
+			-10.0f, +10.0f, -10.0f,  2.0f,
+			-10.0f, +10.0f, -10.0f,  2.0f,
+			-10.0f, +10.0f, +10.0f,  2.0f,
+			-10.0f, -10.0f, +10.0f,  2.0f,
+									 
+			+10.0f, -10.0f, -10.0f,  1.0f, //+x
+			+10.0f, -10.0f, +10.0f,  1.0f,
+			+10.0f, +10.0f, +10.0f,  1.0f,
+			+10.0f, +10.0f, +10.0f,  1.0f,
+			+10.0f, +10.0f, -10.0f,  1.0f,
+			+10.0f, -10.0f, -10.0f,  1.0f,
+									 
+			-10.0f, -10.0f, +10.0f,  5.0f,  // +z
+			-10.0f, +10.0f, +10.0f,  5.0f,
+			+10.0f, +10.0f, +10.0f,  5.0f,
+			+10.0f, +10.0f, +10.0f,  5.0f,
+			+10.0f, -10.0f, +10.0f,  5.0f,
+			-10.0f, -10.0f, +10.0f,  5.0f,
+									 
+			-10.0f, +10.0f, -10.0f,  3.0f,  //+y
+			+10.0f, +10.0f, -10.0f,  3.0f,
+			+10.0f, +10.0f, +10.0f,  3.0f,
+			+10.0f, +10.0f, +10.0f,  3.0f,
+			-10.0f, +10.0f, +10.0f,  3.0f,
+			-10.0f, +10.0f, -10.0f,  3.0f,
+									 
+			+10.0f, -10.0f, +10.0f,  4.0f,  //-y
+			+10.0f, -10.0f, -10.0f,  4.0f,
+			-10.0f, -10.0f, -10.0f,  4.0f,
+			-10.0f, -10.0f, -10.0f,  4.0f,
+			-10.0f, -10.0f, +10.0f,  4.0f,
+			+10.0f, -10.0f, +10.0f,  4.0f,
 		};
 
-		const auto FLOATS_PER_SKY_BOX_VERTEX = 4;
+		static_assert(FLOATS_PER_SKY_BOX_VERTEX * SKY_BOX_VERTEX_COUNT == _countof(skyBoxPoints), "sky box vertex count mismatch");
 		
 		BufferLoadDesc skyBoxVertexBufferDescription = {};
 		skyBoxVertexBufferDescription.mDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
@@ -581,7 +597,7 @@ private:
 		ASSERT(nullptr != skyBoxSampler);
 
 		Shader* shaders[] = { skyBoxShader };
-		const char* samplersNames[] = { "uSampler0" };
+		const char* samplersNames[] = { "skyBoxSampler" };
 		Sampler* staticSamplers[] = { skyBoxSampler };
 
 		RootSignatureDesc rootSignatureDescription = {};
@@ -644,6 +660,53 @@ private:
 		prepareSkyBoxVertexBuffer();
 	}
 
+	bool addDepthBuffers()
+	{
+		RenderTargetDesc depthRenderTargetDescription = {};
+		depthRenderTargetDescription.mArraySize = 1;
+		depthRenderTargetDescription.mClearValue.depth = 1.0f;
+		depthRenderTargetDescription.mClearValue.stencil = 0;
+		depthRenderTargetDescription.mDepth = 1;
+		depthRenderTargetDescription.mFormat = ImageFormat::D32F;
+		depthRenderTargetDescription.mHeight = mSettings.mHeight;
+		depthRenderTargetDescription.mSampleCount = SAMPLE_COUNT_1;
+		depthRenderTargetDescription.mSampleQuality = 0;
+		depthRenderTargetDescription.mWidth = mSettings.mWidth;
+		addRenderTarget(renderer, &depthRenderTargetDescription, &depthBuffer);
+
+		depthRenderTargetDescription.mWidth = SHADOW_MAP_WIDTH;
+		depthRenderTargetDescription.mHeight = SHADOW_MAP_HEIGHT;
+		addRenderTarget(renderer, &depthRenderTargetDescription, &shadowMapDepthBuffer);
+
+		return nullptr != depthBuffer && nullptr != shadowMapDepthBuffer;
+	}
+
+	void recenterCameraView(const float maxDistance) const
+	{
+		ASSERT(0 <= maxDistance);
+
+		const vec3 lookAt = vec3{0};
+
+		vec3 position = cameraController->getViewPosition();
+		vec3 direction = position - lookAt;
+
+		const float viewDirectionSqrLength = lengthSqr(direction);
+		if (viewDirectionSqrLength > (maxDistance * maxDistance))
+		{
+			direction *= (maxDistance / sqrtf(viewDirectionSqrLength));
+		}
+
+		position = direction + lookAt;
+		cameraController->moveTo(position);
+		cameraController->lookAt(lookAt);
+	}
+
+	static bool cameraInputEvent(const ButtonData* const data)
+	{
+		cameraController->onInputEvent(data);
+		return true;
+	}
+
 	static constexpr float SHADOW_MAP_Z_NEAR = 0.1f;
 	static constexpr float SHADOW_MAP_Z_FAR = 100.0f;
 
@@ -655,7 +718,7 @@ public:
 	{
 		const auto xRadians = degToRad(-40.0f);
 		const auto yRadians = degToRad(180.0f);
-		const auto lightPosition = vec4{ 30.0f, -66.0f, -100.0f, 1.0f };
+		const auto lightPosition = vec4 {30.0f, -66.0f, -100.0f, 1.0f};
 
 		lightView = mat4::rotationXY(xRadians, yRadians);
 		const vec4 translation = lightView * lightPosition;
@@ -678,7 +741,7 @@ public:
 		QueueDesc commandsQueueDescription = {};
 		commandsQueueDescription.mType = CMD_POOL_DIRECT;
 		addQueue(renderer, &commandsQueueDescription, &commandQueue);
-		addCmdPool(renderer, commandQueue, false, &commandsPool);
+		addCmdPool(renderer, commandQueue, /*transient: */false, &commandsPool);
 		addCmd_n(commandsPool, false, PRE_RENDERED_FRAMES_COUNT, &commandsBuffers);
 
 		ASSERT(PRE_RENDERED_FRAMES_COUNT  == _countof(frameCompleteFences));
@@ -690,7 +753,7 @@ public:
 		}
 		addSemaphore(renderer, &imageAcquiredSemaphore);
 
-		initResourceLoaderInterface(renderer, DEFAULT_MEMORY_BUDGET, true);
+		initResourceLoaderInterface(renderer, DEFAULT_MEMORY_BUDGET, /*use threads: */true);
 		initDebugRendererInterface(renderer, "TitilliumText/TitilliumText-Bold.otf", FSR_Builtin_Fonts);
 
 		#if defined(NEED_JOYSTICK)
@@ -722,7 +785,7 @@ public:
 		
 		ASSERT(PRE_RENDERED_FRAMES_COUNT == _countof(cameraViewProjectionUniformBuffers));
 		ASSERT(PRE_RENDERED_FRAMES_COUNT == _countof(skyBoxUniformBuffers));
-		for (uint32_t i = 0; i < PRE_RENDERED_FRAMES_COUNT; ++i)
+		for (auto i = 0u; i < PRE_RENDERED_FRAMES_COUNT; ++i)
 		{
 			commonUniformBufferDescription.ppBuffer = &cameraViewProjectionUniformBuffers[i];
 			addResource(&commonUniformBufferDescription);
@@ -740,7 +803,7 @@ public:
 
 		userInterface.LoadFont("TitilliumText/TitilliumText-Bold.otf", FSR_Builtin_Fonts);
 
-		const CameraMotionParameters cameraMotionParameters { 160.0f, 600.0f, 200.0f };
+		const CameraMotionParameters cameraMotionParameters { /*maxc speed: */160.0f, /*acceleration: */600.0f, /*braking: */200.0f };
 		const vec3 cameraPosition { 48.0f, 48.0f, 20.0f };
 		const vec3 lookAt { 0 };
 
@@ -1133,7 +1196,7 @@ private:
 				RenderTarget* renderTargets[SHADOW_MAP_BUFFERS_COUNT] = { shadowMapColor, shadowMapDepth, };
 				cmdBindRenderTargets(cmd, _countof(renderTargets), renderTargets, shadowMapDepthBuffer, &shadowMapLoadActions, nullptr, nullptr, -1, -1);
 				cmdSetViewport(cmd, 0.0f, 0.0f, static_cast<float>(shadowMapDepth->mDesc.mWidth), static_cast<float>(shadowMapDepth->mDesc.mHeight), 0.0f, 1.0f);
-				cmdSetScissor(cmd, 0, 0, shadowMapDepth->mDesc.mWidth, shadowMapDepth->mDesc.mHeight);
+				cmdSetScissor(cmd, /*x: */0, /*y: */0, shadowMapDepth->mDesc.mWidth, shadowMapDepth->mDesc.mHeight);
 			}
 
 			// floor z-only
@@ -1147,15 +1210,15 @@ private:
 
 				ASSERT(descriptorCount <= _countof(floorDrawParameters));
 
-				cmdBeginDebugMarker(cmd, 1, 1, 1, "Draw floor");
+				cmdBeginDebugMarker(cmd, 1, 0, 1, "Draw floor");
+				{
+					cmdBindPipeline(cmd, floorShadowMapDepthOnlyPassPipeline);
 
-				cmdBindPipeline(cmd, floorShadowMapDepthOnlyPassPipeline);
+					cmdBindDescriptors(cmd, floorRootSignature, descriptorCount, floorDrawParameters);
+					cmdBindVertexBuffer(cmd, /*buffer count: */1, &floorVertices,  /*offsets: */nullptr);
 
-				cmdBindDescriptors(cmd, floorRootSignature, descriptorCount, floorDrawParameters);
-				cmdBindVertexBuffer(cmd, /*buffer count: */1, &floorVertices,  /*offsets: */nullptr);
-
-				cmdDraw(cmd, FLOOR_VERTEX_COUNT, /*first vertex: */0);
-
+					cmdDraw(cmd, FLOOR_VERTEX_COUNT, /*first vertex: */0);
+				}
 				cmdEndDebugMarker(cmd);
 			}
 
@@ -1165,7 +1228,7 @@ private:
 				{
 					{ shadowMapDepthBuffer->pTexture, RESOURCE_STATE_DEPTH_READ | RESOURCE_STATE_SHADER_RESOURCE },
 				};
-				cmdResourceBarrier(cmd, 0, nullptr, _countof(zReadBarrier), zReadBarrier, false);
+				cmdResourceBarrier(cmd, 0, nullptr, _countof(zReadBarrier), zReadBarrier, /*batch: */false);
 
 				DescriptorData particlesShadowMapDescriptors[MAX_DESCRIPTORS_COUNT] = {};
 				int descriptorCount = 0;
@@ -1203,7 +1266,7 @@ private:
 				{ frameBufferRenderTarget->pTexture, RESOURCE_STATE_RENDER_TARGET },
 				{ depthBuffer->pTexture, RESOURCE_STATE_DEPTH_WRITE },
 			};
-			cmdResourceBarrier(cmd, 0, nullptr, _countof(barriers), barriers, false);
+			cmdResourceBarrier(cmd, 0, nullptr, _countof(barriers), barriers, /*batch: */false);
 		}
 
 		// render target setup
@@ -1220,7 +1283,7 @@ private:
 
 			cmdBindRenderTargets(cmd, 1, &frameBufferRenderTarget, depthBuffer, &loadActions, nullptr, nullptr, -1, -1);
 			cmdSetViewport(cmd, 0.0f, 0.0f, static_cast<float>(frameBufferRenderTarget->mDesc.mWidth), static_cast<float>(frameBufferRenderTarget->mDesc.mHeight), 0.0f, 1.0f);
-			cmdSetScissor(cmd, 0, 0, frameBufferRenderTarget->mDesc.mWidth, frameBufferRenderTarget->mDesc.mHeight);
+			cmdSetScissor(cmd, /*x: */0, /*y: */0, frameBufferRenderTarget->mDesc.mWidth, frameBufferRenderTarget->mDesc.mHeight);
 		}
 
 		cmdBeginDebugMarker(cmd, 0, 0, 1, "draw sky box");
@@ -1248,8 +1311,8 @@ private:
 			ASSERT(descriptorCount <= _countof(params));
 
 			cmdBindDescriptors(cmd, skyBoxRootSignature, descriptorCount, params);
-			cmdBindVertexBuffer(cmd, 1, &skyBoxVertexBuffer, nullptr);
-			cmdDraw(cmd, 36, 0);
+			cmdBindVertexBuffer(cmd, /*buffer count: */1, &skyBoxVertexBuffer, /*offsets pointer: */nullptr);
+			cmdDraw(cmd, SKY_BOX_VERTEX_COUNT, /*first vertex: */0);
 		}
 		cmdEndDebugMarker(cmd);
 
@@ -1324,49 +1387,21 @@ private:
 		cmdEndDebugMarker(cmd);
 	}
 
-	bool addDepthBuffers()
+	void drawUserInterface(Cmd* cmd)
 	{
-		RenderTargetDesc depthRenderTargetDescription = {};
-		depthRenderTargetDescription.mArraySize = 1;
-		depthRenderTargetDescription.mClearValue.depth = 1.0f;
-		depthRenderTargetDescription.mClearValue.stencil = 0;
-		depthRenderTargetDescription.mDepth = 1;
-		depthRenderTargetDescription.mFormat = ImageFormat::D32F;
-		depthRenderTargetDescription.mHeight = mSettings.mHeight;
-		depthRenderTargetDescription.mSampleCount = SAMPLE_COUNT_1;
-		depthRenderTargetDescription.mSampleQuality = 0;
-		depthRenderTargetDescription.mWidth = mSettings.mWidth;
-		addRenderTarget(renderer, &depthRenderTargetDescription, &depthBuffer);
-
-		depthRenderTargetDescription.mWidth = SHADOW_MAP_WIDTH;
-		depthRenderTargetDescription.mHeight = SHADOW_MAP_HEIGHT;
-		addRenderTarget(renderer, &depthRenderTargetDescription, &shadowMapDepthBuffer);
-
-		return nullptr != depthBuffer && nullptr != shadowMapDepthBuffer;
-	}
-
-	void recenterCameraView(const float maxDistance) const
-	{
-		const vec3 lookAt = vec3{ 0 };
-
-		vec3 p = cameraController->getViewPosition();
-		vec3 d = p - lookAt;
-
-		const float viewDirectionLengthSqr = lengthSqr(d);
-		if (viewDirectionLengthSqr > (maxDistance * maxDistance))
+		cmdBeginDebugMarker(cmd, 0, 1, 0, "Draw UI");
 		{
-			d *= (maxDistance / sqrtf(viewDirectionLengthSqr));
+			timer.GetUSec(true);
+
+			#if defined(NEED_JOYSTICK)
+			gVirtualJoystick.Draw(cmd, pCameraController, { 1.0f, 1.0f, 1.0f, 1.0f });
+			#endif // #if defined(NEED_JOYSTICK)
+
+			drawDebugText(cmd, /*x: */8, /*y: */15, tinystl::string::format("CPU %f ms", timer.GetUSecAverage() / 1000.0f), &frameTimeDraw);
+			userInterface.Draw(cmd);
+			cmdBindRenderTargets(cmd, 0, nullptr, nullptr, nullptr, nullptr, nullptr, -1, -1);
 		}
-
-		p = d + lookAt;
-		cameraController->moveTo(p);
-		cameraController->lookAt(lookAt);
-	}
-
-	static bool cameraInputEvent(const ButtonData* const data)
-	{
-		cameraController->onInputEvent(data);
-		return true;
+		cmdEndDebugMarker(cmd);
 	}
 
 public:
@@ -1380,12 +1415,12 @@ public:
 		Semaphore* frameCompleteSemaphore = frameCompleteSemaphores[preRenderedFrameIndex];
 		Fence* frameCompleteFence = frameCompleteFences[preRenderedFrameIndex];
 
-		// Stall if CPU is running "Swap Chain Buffer Count" frames ahead of GPU
+		// stall if CPU is running "Swap Chain Buffer Count" frames ahead of GPU
 		FenceStatus fenceStatus;
 		getFenceStatus(renderer, frameCompleteFence, &fenceStatus);
 		if (fenceStatus == FENCE_STATUS_INCOMPLETE)
 		{
-			waitForFences(commandQueue, 1, &frameCompleteFence, false);
+			waitForFences(commandQueue, /*fence count: */1, &frameCompleteFence, /*signal: */false);
 		}
 			
 		BufferUpdateDesc cameraViewProjectionUniformsUpdate = { cameraViewProjectionUniformBuffers[preRenderedFrameIndex], &commonUniformData };
@@ -1408,26 +1443,15 @@ public:
 
 		Cmd* cmd = commandsBuffers[preRenderedFrameIndex];
 		beginCmd(cmd);
-
-		drawShadowMap(cmd);
-		drawScene(frameBufferRenderTarget, cmd);
-
-		cmdBeginDebugMarker(cmd, 0, 1, 0, "Draw UI");
-
-		timer.GetUSec(true);
-
-		#if defined(NEED_JOYSTICK)
-		gVirtualJoystick.Draw(cmd, pCameraController, { 1.0f, 1.0f, 1.0f, 1.0f });
-		#endif // #if defined(NEED_JOYSTICK)
-
-		drawDebugText(cmd, /*x: */8, /*y: */15, tinystl::string::format("CPU %f ms", timer.GetUSecAverage() / 1000.0f), &frameTimeDraw);
-		userInterface.Draw(cmd);
-		cmdBindRenderTargets(cmd, 0, nullptr, nullptr, nullptr, nullptr, nullptr, -1, -1);
-		cmdEndDebugMarker(cmd);
-
 		{
+			drawShadowMap(cmd);
+			drawScene(frameBufferRenderTarget, cmd);
+			drawUserInterface(cmd);
+
+			{
 			TextureBarrier barriers[] = { { frameBufferRenderTarget->pTexture, RESOURCE_STATE_PRESENT } };
-			cmdResourceBarrier(cmd, 0, nullptr, _countof(barriers), barriers, true);
+			cmdResourceBarrier(cmd, 0, nullptr, _countof(barriers), barriers, /*batch: */true);
+			}
 		}
 		endCmd(cmd);
 
